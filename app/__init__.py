@@ -1,0 +1,1 @@
+"""Grid inspection operations service."""

@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      GRID_MODEL_REPO_ID: ${GRID_MODEL_REPO_ID:?set_GRID_MODEL_REPO_ID}
+      # Pin this to a Hugging Face commit SHA after validating a release.
+      GRID_MODEL_REVISION: ${GRID_MODEL_REVISION:-main}
+      GRID_MODEL_CACHE_DIR: /models/grid-patchcore-v1
+      DATABASE_PATH: /runtime/inspections.db
+    volumes:
+      - grid-model-cache:/models
+      - grid-runtime:/runtime
+  frontend:
+    image: nginx:1.27-alpine
+    ports: ["8080:80"]
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+volumes:
+  grid-model-cache:
+  grid-runtime:
