@@ -4,6 +4,11 @@ Production-oriented quality-inspection workflow for the MVTec `grid` case.
 
 Project progress is tracked on the [V1 GitHub Project board](https://github.com/users/cankiziloz/projects/1/views/1?system_template=kanban).
 
+The [portfolio operational documents](docs/README.md) define the intended
+camera-to-API integration and human-review workflow. The file-upload control is
+only a local demo/test harness; a production deployment would receive images
+from an automated camera or edge gateway.
+
 The CV model is the only component allowed to choose `PASS`, `INSPECT`, or
 `REJECT`. LangGraph orchestrates validation, durable human review, audit events,
 history checks, and LLM-generated explanations/checklists. An LLM never changes
