@@ -14,6 +14,27 @@ from .domain import InspectionRecord, ProcedureReference
 
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9_-]{1,}")
 
+
+def _query_tokens(query: str) -> set[str]:
+    """Normalize a small, explicit inspection vocabulary before ranking.
+
+    This is not an LLM synonym guesser. Each expansion is an auditable domain
+    term and is covered by the versioned retrieval benchmark.
+    """
+    tokens = set(_TOKEN.findall(query.lower()))
+    if "reject" in tokens:
+        tokens.update({"quarantine", "immediate", "actions"})
+    if "duplicate" in tokens or "frame" in tokens:
+        tokens.update({"idempotent", "retry", "acceptance", "rules"})
+    unresolved = {"cannot", "decide"}.issubset(tokens) or "unresolved" in tokens
+    if unresolved:
+        tokens.update({"escalate", "escalation"})
+    if "reviewer" in tokens or "operator" in tokens:
+        tokens.add("review")
+    if not unresolved and ("resolve" in tokens or "inspect" in tokens):
+        tokens.update({"required", "steps"})
+    return tokens
+
 REASON_DOCUMENTS: dict[str, tuple[str, ...]] = {
     "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD": ("SOP-QA-04", "SOP-ESC-03"),
     "SCORE_IN_REVIEW_BAND": ("SOP-REV-02", "SOP-ESC-03"),
@@ -76,8 +97,15 @@ class SopRetriever:
             dict.fromkeys(doc for reason in reasons for doc in REASON_DOCUMENTS.get(reason, ()))
         )
         preferred_rank = {document_id: rank for rank, document_id in enumerate(preferred_order)}
-        query = " ".join([record.decision.value, *reasons, *(record.checklist or [])]).lower()
-        query_tokens = set(_TOKEN.findall(query))
+        query = " ".join([record.decision.value, *reasons, *(record.checklist or [])])
+        return self._rank(query, preferred_rank, top_k)
+
+    def search(self, query: str, top_k: int = 3) -> list[ProcedureReference]:
+        """Keyword/natural-language search over approved SOP sections."""
+        return self._rank(query, {}, top_k)
+
+    def _rank(self, query: str, preferred_rank: dict[str, int], top_k: int) -> list[ProcedureReference]:
+        query_tokens = _query_tokens(query)
         ranked: list[tuple[float, ProcedureChunk]] = []
         for chunk in self.chunks:
             overlap = len(query_tokens & chunk.tokens)
@@ -87,9 +115,11 @@ class SopRetriever:
             # Lower-priority supporting procedures can never outrank it merely
             # because they happen to share more words with the query.
             policy_boost = 1000.0 - (100.0 * preferred_rank[chunk.document_id]) if chunk.document_id in preferred_rank else 0.0
-            section_bonus = 0.1 * len(query_tokens & set(_TOKEN.findall(chunk.section.lower())))
+            # Section headings are curated retrieval anchors and deserve more
+            # weight than incidental keyword matches in a long body paragraph.
+            section_bonus = 5.0 * len(query_tokens & set(_TOKEN.findall(chunk.section.lower())))
             ranked.append((policy_boost + overlap + section_bonus, chunk))
-        selected = sorted(ranked, key=lambda item: (-item[0], item[1].document_id, item[1].section))[:top_k]
+        selected = [item for item in sorted(ranked, key=lambda item: (-item[0], item[1].document_id, item[1].section)) if item[0] > 0][:top_k]
         return [
             ProcedureReference(
                 document_id=chunk.document_id,

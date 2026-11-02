@@ -1,0 +1,6 @@
+[
+  {"query":"What should happen after a reject?","document_id":"SOP-QA-04","section":"Immediate actions"},
+  {"query":"The camera sent a duplicate frame. What is the acceptance rule?","document_id":"SOP-ING-01","section":"Image acceptance rules"},
+  {"query":"An operator cannot decide whether an inspect case should pass or reject.","document_id":"SOP-ESC-03","section":"Escalate when"},
+  {"query":"How should a reviewer resolve an inspect case?","document_id":"SOP-REV-02","section":"Required review steps"}
+]

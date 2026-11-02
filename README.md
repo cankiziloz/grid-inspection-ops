@@ -14,8 +14,8 @@ from an automated camera or edge gateway.
 V1 uses deterministic, non-agentic retrieval over the approved Markdown SOPs.
 The critical-policy reason code constrains which procedure may be cited; lexical
 ranking then selects the most relevant section. This keeps retrieval stable and
-testable before a future Ollama generator is introduced. Run its regression
-evaluation with:
+testable before a future Ollama generator is introduced. Run the
+keyword/natural-language retrieval benchmark with:
 
 ```bash
 python scripts/evaluate_retrieval.py

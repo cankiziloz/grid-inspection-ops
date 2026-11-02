@@ -1,30 +1,22 @@
-"""Run the small, versioned retrieval regression set used by the test suite."""
+"""Run keyword/natural-language retrieval regression metrics."""
 from __future__ import annotations
 
 from pathlib import Path
 
-from app.domain import Decision, InspectionRecord
 from app.rag import SopRetriever
-
-
-CASES = {
-    "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD": "SOP-QA-04",
-    "SCORE_IN_REVIEW_BAND": "SOP-REV-02",
-    "IMAGE_TOO_BLURRY": "SOP-REV-02",
-    "ARTIFACT_NOT_VERIFIED": "SOP-ESC-03",
-}
+from app.rag_evaluation import evaluate, load_cases
 
 
 def main() -> None:
-    retriever = SopRetriever(Path(__file__).resolve().parents[1] / "docs")
-    correct = 0
-    for reason, expected in CASES.items():
-        record = InspectionRecord(inspection_id=reason, part_id="evaluation", image_uri="none", decision=Decision.INSPECT,
-                                  metadata={"critical_policy": {"reason_codes": [reason]}})
-        actual = retriever.retrieve(record, top_k=1)[0].document_id
-        correct += actual == expected
-        print(f"{reason}: expected={expected}, retrieved={actual}")
-    print(f"Recall@1: {correct / len(CASES):.1%} ({correct}/{len(CASES)})")
+    root = Path(__file__).resolve().parents[1]
+    retriever = SopRetriever(root / "docs")
+    cases = load_cases(root / "tests" / "fixtures" / "rag_retrieval_cases.json")
+    for case in cases:
+        top = retriever.search(case.query, top_k=1)
+        actual = f"{top[0].document_id} § {top[0].section}" if top else "NO_RESULT"
+        print(f"query={case.query!r}\n  expected={case.document_id} § {case.section}\n  retrieved={actual}")
+    for metric, value in evaluate(retriever, cases).items():
+        print(f"{metric}: {value:.1%}")
 
 
 if __name__ == "__main__":

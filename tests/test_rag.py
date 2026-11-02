@@ -4,6 +4,7 @@ import pytest
 
 from app.domain import Decision, InspectionRecord
 from app.rag import SopRetriever
+from app.rag_evaluation import evaluate, load_cases
 
 DOCS = Path(__file__).resolve().parents[1] / "docs"
 
@@ -33,3 +34,19 @@ def test_retriever_only_uses_approved_sop_files():
                          metadata={"critical_policy": {"reason_codes": ["ALL_CRITICAL_GATES_PASSED"]}})
     )
     assert all(reference.document_id.startswith("SOP-") for reference in references)
+
+
+def test_keyword_and_natural_language_benchmark_retrieves_expected_section():
+    root = Path(__file__).resolve().parents[1]
+    cases = load_cases(root / "tests" / "fixtures" / "rag_retrieval_cases.json")
+    metrics = evaluate(SopRetriever(DOCS), cases)
+    assert metrics == {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "mrr": 1.0,
+        "section_accuracy_at_1": 1.0,
+    }
+
+
+def test_unknown_query_has_no_confident_procedure_result():
+    assert SopRetriever(DOCS).search("quantum banana asteroid", top_k=3) == []
