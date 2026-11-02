@@ -59,6 +59,17 @@ class ProcedureReference(BaseModel):
     score: float
 
 
+class ExplanationPayload(BaseModel):
+    """Validated, non-authoritative explanation produced after the decision."""
+
+    source: str
+    summary: str = Field(min_length=1, max_length=1200)
+    operator_actions: list[str] = Field(default_factory=list, max_length=5)
+    sop_references: list[str] = Field(default_factory=list, max_length=3)
+    escalation_required: bool = False
+    fallback_reason: str | None = None
+
+
 class VisionEvidence(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -83,6 +94,7 @@ class InspectionRecord(BaseModel):
     review: ReviewResolution | None = None
     evidence: VisionEvidence | None = None
     explanation: str | None = None
+    explanation_payload: ExplanationPayload | None = None
     checklist: list[str] = Field(default_factory=list)
     procedure_references: list[ProcedureReference] = Field(default_factory=list)
     review_note: str | None = None

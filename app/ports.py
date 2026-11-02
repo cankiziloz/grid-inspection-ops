@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from .domain import InspectionRecord, ReviewResolution, VisionEvidence
+from .domain import ExplanationPayload, InspectionRecord, ReviewResolution, VisionEvidence
 
 
 class GridVisionModel(Protocol):
@@ -19,4 +19,4 @@ class InspectionRepository(Protocol):
 
 
 class ExplanationService(Protocol):
-    def explain(self, record: InspectionRecord, history: dict) -> str: ...
+    def explain(self, record: InspectionRecord, history: dict) -> ExplanationPayload: ...

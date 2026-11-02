@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from .domain import Decision, ReviewResolution
 from fastapi.middleware.cors import CORSMiddleware
 
-from .explain import SafeTemplateExplainer
+from .explain import OllamaProcedureExplainer, SafeTemplateExplainer
 from .graph import build_inspection_graph
 from .model_artifacts import download_grid_model
 from .rag import SopRetriever
@@ -51,7 +51,14 @@ def runtime():
         vision = GridPatchCoreVision(str(artifact.model_dir), str(artifact.stn_path), model_version=f"{artifact.model_id}@{artifact.revision}", artifact_verified=True)
         app.state.repository = repository
         retriever = SopRetriever(Path(__file__).parent.parent / "docs")
-        app.state.graph = build_inspection_graph(vision, repository, SafeTemplateExplainer(), retriever)
+        if os.getenv("EXPLANATION_PROVIDER", "template").lower() == "ollama":
+            explainer = OllamaProcedureExplainer(
+                model=os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b"),
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+            )
+        else:
+            explainer = SafeTemplateExplainer()
+        app.state.graph = build_inspection_graph(vision, repository, explainer, retriever)
     return app.state.graph, app.state.repository
 
 

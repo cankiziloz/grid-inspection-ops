@@ -54,7 +54,8 @@ def build_inspection_graph(
     def add_explanation(state: InspectionState) -> InspectionState:
         record = state["record"]
         # The explanation is post-decision only; it cannot mutate record.decision.
-        return {"record": record.model_copy(update={"explanation": explainer.explain(record, state["history"])})}
+        payload = explainer.explain(record, state["history"])
+        return {"record": record.model_copy(update={"explanation": payload.summary, "explanation_payload": payload})}
 
     def retrieve_procedures(state: InspectionState) -> InspectionState:
         if retriever is None:

@@ -21,6 +21,22 @@ evaluation with:
 python scripts/evaluate_retrieval.py
 ```
 
+## Optional local Ollama explanations
+
+The default is the deterministic template explainer. To enable a local Ollama
+generator after installing a model, configure:
+
+```bash
+export EXPLANATION_PROVIDER=ollama
+export OLLAMA_MODEL=qwen2.5:1.5b
+uvicorn app.api:app --reload
+```
+
+The generator receives only the immutable decision, measured evidence, and
+retrieved SOP excerpts. Its JSON output is validated; unapproved citations,
+malformed output, or an unavailable Ollama service fall back to the template.
+Check the real local integration with `python scripts/smoke_ollama.py`.
+
 The CV model is the only component allowed to choose `PASS`, `INSPECT`, or
 `REJECT`. LangGraph orchestrates validation, durable human review, audit events,
 history checks, and LLM-generated explanations/checklists. An LLM never changes
