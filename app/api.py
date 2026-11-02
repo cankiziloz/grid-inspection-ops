@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .explain import SafeTemplateExplainer
 from .graph import build_inspection_graph
 from .model_artifacts import download_grid_model
+from .rag import SopRetriever
 from .repository import SqliteInspectionRepository
 from .vision import GridPatchCoreVision
 
@@ -49,7 +50,8 @@ def runtime():
         repository = SqliteInspectionRepository(os.getenv("DATABASE_PATH", "runtime/inspections.db"))
         vision = GridPatchCoreVision(str(artifact.model_dir), str(artifact.stn_path), model_version=f"{artifact.model_id}@{artifact.revision}", artifact_verified=True)
         app.state.repository = repository
-        app.state.graph = build_inspection_graph(vision, repository, SafeTemplateExplainer())
+        retriever = SopRetriever(Path(__file__).parent.parent / "docs")
+        app.state.graph = build_inspection_graph(vision, repository, SafeTemplateExplainer(), retriever)
     return app.state.graph, app.state.repository
 
 

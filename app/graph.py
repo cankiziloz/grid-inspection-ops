@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from .domain import Decision, InspectionRecord, ReviewStatus
 from .policy import checklist_for, evaluate
 from .ports import ExplanationService, GridVisionModel, InspectionRepository
+from .rag import SopRetriever
 
 
 class InspectionState(TypedDict, total=False):
@@ -23,6 +24,7 @@ def build_inspection_graph(
     vision: GridVisionModel,
     repository: InspectionRepository,
     explainer: ExplanationService,
+    retriever: SopRetriever | None = None,
 ):
     def validate_input(state: InspectionState) -> InspectionState:
         path = Path(state["image_path"])
@@ -54,6 +56,12 @@ def build_inspection_graph(
         # The explanation is post-decision only; it cannot mutate record.decision.
         return {"record": record.model_copy(update={"explanation": explainer.explain(record, state["history"])})}
 
+    def retrieve_procedures(state: InspectionState) -> InspectionState:
+        if retriever is None:
+            return {}
+        record = state["record"]
+        return {"record": record.model_copy(update={"procedure_references": retriever.retrieve(record)})}
+
     def persist(state: InspectionState) -> InspectionState:
         repository.save(state["record"])
         return {}
@@ -62,12 +70,14 @@ def build_inspection_graph(
     graph.add_node("validate_input", validate_input)
     graph.add_node("run_grid_model", run_grid_model)
     graph.add_node("load_history", load_history)
+    graph.add_node("retrieve_procedures", retrieve_procedures)
     graph.add_node("add_explanation", add_explanation)
     graph.add_node("persist", persist)
     graph.add_edge(START, "validate_input")
     graph.add_edge("validate_input", "run_grid_model")
     graph.add_edge("run_grid_model", "load_history")
-    graph.add_edge("load_history", "add_explanation")
+    graph.add_edge("load_history", "retrieve_procedures")
+    graph.add_edge("retrieve_procedures", "add_explanation")
     graph.add_edge("add_explanation", "persist")
     graph.add_edge("persist", END)
     return graph.compile()

@@ -9,6 +9,18 @@ camera-to-API integration and human-review workflow. The file-upload control is
 only a local demo/test harness; a production deployment would receive images
 from an automated camera or edge gateway.
 
+## Retrieval-augmented procedures
+
+V1 uses deterministic, non-agentic retrieval over the approved Markdown SOPs.
+The critical-policy reason code constrains which procedure may be cited; lexical
+ranking then selects the most relevant section. This keeps retrieval stable and
+testable before a future Ollama generator is introduced. Run its regression
+evaluation with:
+
+```bash
+python scripts/evaluate_retrieval.py
+```
+
 The CV model is the only component allowed to choose `PASS`, `INSPECT`, or
 `REJECT`. LangGraph orchestrates validation, durable human review, audit events,
 history checks, and LLM-generated explanations/checklists. An LLM never changes

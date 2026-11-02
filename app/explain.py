@@ -9,9 +9,13 @@ class SafeTemplateExplainer:
     def explain(self, record: InspectionRecord, history: dict) -> str:
         evidence = record.evidence
         assert evidence is not None
+        references = ", ".join(
+            f"{item.document_id} § {item.section}" for item in record.procedure_references
+        ) or "No procedure reference available"
         return (
             f"Grid policy returned {record.decision}: score {evidence.score:.4f}; "
             f"review threshold {evidence.review_threshold:.4f}; "
             f"reject threshold {evidence.reject_threshold:.4f}; "
-            f"valid coverage {evidence.valid_coverage:.1%}."
+            f"valid coverage {evidence.valid_coverage:.1%}. "
+            f"Relevant procedures: {references}."
         )

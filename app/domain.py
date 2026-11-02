@@ -49,6 +49,16 @@ class ImageQuality(BaseModel):
     failure_reasons: list[str] = Field(default_factory=list)
 
 
+class ProcedureReference(BaseModel):
+    """A bounded citation returned by the deterministic SOP retriever."""
+
+    document_id: str
+    title: str
+    section: str
+    excerpt: str
+    score: float
+
+
 class VisionEvidence(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -74,5 +84,6 @@ class InspectionRecord(BaseModel):
     evidence: VisionEvidence | None = None
     explanation: str | None = None
     checklist: list[str] = Field(default_factory=list)
+    procedure_references: list[ProcedureReference] = Field(default_factory=list)
     review_note: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
