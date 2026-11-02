@@ -23,3 +23,12 @@ intended production operator workflow.
 In a later RAG phase, only these approved documents (or explicitly approved
 replacements) will be indexed. An LLM may explain their relevant clauses but
 cannot change the CV or critical-policy decision.
+
+## Tracked retrieval hardening
+
+**RAG-EVAL-01 — Retrieval evaluation benchmark** is a required follow-up before
+declaring the RAG layer production-ready. It will add a versioned set of
+keyword and natural-language queries, each labelled with an expected SOP and
+section, and will measure Recall@1, Recall@3, MRR, and section accuracy. The
+current tests validate deterministic policy-reason routing; they do not claim
+that arbitrary free-text queries are always retrieved correctly.
