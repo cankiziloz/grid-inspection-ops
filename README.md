@@ -36,7 +36,7 @@ export RETRIEVAL_PROVIDER=pinecone
 an approved section to be upserted rather than duplicated. After any reviewed
 SOP change, run it in CI/CD or as a deliberate release operation before
 deploying the API. Do not set `RETRIEVAL_PROVIDER=pinecone` until the sync has
-succeeded. The API fails closed at startup if its credentials/host are absent.
+succeeded. The inspection runtime fails closed if its credentials/host are absent.
 
 Run the local keyword/natural-language retrieval regression benchmark with:
 
