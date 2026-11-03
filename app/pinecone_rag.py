@@ -1,10 +1,4 @@
-"""Pinecone-backed semantic retrieval for approved inspection procedures.
-
-Pinecone's integrated embedding index turns the ``text`` field into vectors on
-write and embeds a text query on read.  The policy is still the authority over
-which documents are eligible for a decision; Pinecone only ranks sections in
-that approved subset.
-"""
+"""Pinecone-backed semantic retrieval for approved inspection procedures."""
 from __future__ import annotations
 
 import hashlib
@@ -41,12 +35,14 @@ def chunk_id(chunk: ProcedureChunk) -> str:
     return f"{chunk.document_id}:{hashlib.sha256(content).hexdigest()[:16]}"
 
 
-def records_for_chunks(chunks: list[ProcedureChunk]) -> list[dict[str, str]]:
-    """Build the source-of-truth records expected by Pinecone's field map."""
+def records_for_chunks(
+    chunks: list[ProcedureChunk], embedding_field: str = "chunk_text"
+) -> list[dict[str, str]]:
+    """Build documents that satisfy the index's configured embedding field."""
     return [
         {
             "_id": chunk_id(chunk),
-            "text": chunk.embedding_text,
+            embedding_field: chunk.embedding_text,
             "document_id": chunk.document_id,
             "title": chunk.title,
             "section": chunk.section,
@@ -56,8 +52,13 @@ def records_for_chunks(chunks: list[ProcedureChunk]) -> list[dict[str, str]]:
     ]
 
 
-def index_approved_procedures(index: PineconeIndex, docs_dir: Path, namespace: str) -> int:
-    records = records_for_chunks(load_procedure_chunks(docs_dir))
+def index_approved_procedures(
+    index: PineconeIndex,
+    docs_dir: Path,
+    namespace: str,
+    embedding_field: str = "chunk_text",
+) -> int:
+    records = records_for_chunks(load_procedure_chunks(docs_dir), embedding_field)
     if not records:
         raise ValueError(f"No approved SOP chunks found in {docs_dir}")
     index.documents.upsert(namespace=namespace, documents=records)
@@ -90,9 +91,10 @@ def _value(item: Any, key: str, default: Any = None) -> Any:
 class PineconeSopRetriever:
     """Semantic retriever for an already-provisioned integrated-embedding index."""
 
-    def __init__(self, index: PineconeIndex, namespace: str) -> None:
+    def __init__(self, index: PineconeIndex, namespace: str, embedding_field: str = "chunk_text") -> None:
         self.index = index
         self.namespace = namespace
+        self.embedding_field = embedding_field
 
     @classmethod
     def from_environment(cls) -> PineconeSopRetriever:
@@ -107,7 +109,11 @@ class PineconeSopRetriever:
         except ImportError as error:
             raise RuntimeError("Install the Pinecone extra: pip install -e '.[rag]'") from error
         client = Pinecone(api_key=api_key)
-        return cls(client.index(host=index_host), os.getenv("PINECONE_NAMESPACE", "grid-inspection-sop-v1"))
+        return cls(
+            client.index(host=index_host),
+            os.getenv("PINECONE_NAMESPACE", "grid-inspection-sop-v1"),
+            os.getenv("PINECONE_EMBEDDING_FIELD", "chunk_text"),
+        )
 
     def retrieve(self, record: InspectionRecord, top_k: int = 2) -> list[ProcedureReference]:
         allowed_document_ids = _preferred_document_ids(record)
@@ -125,7 +131,7 @@ class PineconeSopRetriever:
     ) -> list[ProcedureReference]:
         response = self.index.documents.search(
             namespace=self.namespace,
-            score_by=[{"type": "embed", "field": "text", "query": query_text}],
+            score_by=[{"type": "embed", "field": self.embedding_field, "query": query_text}],
             top_k=top_k,
             include_fields=["document_id", "title", "section", "excerpt"],
             filter=metadata_filter,

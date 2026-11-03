@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.domain import Decision, InspectionRecord
-from app.pinecone_rag import PineconeSopRetriever, index_approved_procedures
+from app.pinecone_rag import PineconeSopRetriever, index_approved_procedures, records_for_chunks
 from app.rag import load_procedure_chunks
 
 DOCS = Path(__file__).resolve().parents[1] / "docs"
@@ -54,7 +54,17 @@ def test_sync_writes_one_stable_record_per_approved_section():
     assert namespace == "grid-inspection-sop-v1"
     assert len(records) == len(expected_chunks)
     assert all(record["_id"].startswith("SOP-") for record in records)
-    assert all({"text", "document_id", "title", "section", "excerpt"} <= record.keys() for record in records)
+    assert all(
+        {"chunk_text", "document_id", "title", "section", "excerpt"} <= record.keys()
+        for record in records
+    )
+
+
+def test_embedding_field_is_configurable_for_a_different_pinecone_schema():
+    record = records_for_chunks(load_procedure_chunks(DOCS), embedding_field="body")[0]
+
+    assert "body" in record
+    assert "chunk_text" not in record
 
 
 def test_policy_retrieval_uses_pinecone_semantic_search_inside_allowed_sops():
@@ -75,7 +85,7 @@ def test_policy_retrieval_uses_pinecone_semantic_search_inside_allowed_sops():
     search = index.searches[0]
     assert search["filter"] == {"document_id": {"$in": ["SOP-QA-04", "SOP-ESC-03"]}}
     assert search["score_by"][0]["type"] == "embed"
-    assert search["score_by"][0]["field"] == "text"
+    assert search["score_by"][0]["field"] == "chunk_text"
     assert "REJECT" in search["score_by"][0]["query"]
 
 

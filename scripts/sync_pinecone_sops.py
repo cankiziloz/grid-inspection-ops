@@ -16,7 +16,9 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     load_dotenv(root / ".env")
     retriever = PineconeSopRetriever.from_environment()
-    count = index_approved_procedures(retriever.index, root / "docs", retriever.namespace)
+    count = index_approved_procedures(
+        retriever.index, root / "docs", retriever.namespace, retriever.embedding_field
+    )
     print(f"Indexed {count} approved SOP sections in namespace {retriever.namespace!r}.")
 
 

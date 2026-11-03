@@ -21,7 +21,7 @@ semantic similarity can select a section *only inside the SOP documents that
 the deterministic policy has approved*. Retrieval informs the explanation; it
 can never change a visual decision.
 
-Provision a Pinecone integrated-embedding index with field map `text` (for
+Provision a Pinecone integrated-embedding index with embedding field `chunk_text` (for
 example using `llama-text-embed-v2`), then use its host and a namespace:
 
 ```bash
@@ -29,6 +29,7 @@ pip install -e '.[dev,rag]'
 export PINECONE_API_KEY=...          # keep this out of Git
 export PINECONE_INDEX_HOST=...       # copied from the Pinecone index details
 export PINECONE_NAMESPACE=grid-inspection-sop-v1
+export PINECONE_EMBEDDING_FIELD=chunk_text
 python scripts/sync_pinecone_sops.py # controlled SOP deployment step
 export RETRIEVAL_PROVIDER=pinecone
 ```
