@@ -9,6 +9,38 @@ camera-to-API integration and human-review workflow. The file-upload control is
 only a local demo/test harness; a production deployment would receive images
 from an automated camera or edge gateway.
 
+## Production-like demo feed
+
+The dashboard is designed around automated ingress. Use the simulator to send
+a shuffled MVTec Grid test corpus at a fixed cadence; it supplies the same
+station/camera/frame/checksum metadata that an edge gateway would send. The
+folder name is printed by the simulator only as demo ground truth and is never
+sent to the model.
+
+```bash
+python scripts/simulate_edge_feed.py \
+  --dataset-root /absolute/path/to/data/grid/test \
+  --interval-seconds 5
+```
+
+Use `--interval-seconds 10` for a slower feed, and `--max-events 20` for a
+finite demo. Each frame has a unique `frame_id`; the `/v1/edge/inspections`
+endpoint validates the image SHA-256 and returns the original result on a
+duplicate frame instead of creating another inspection.
+
+Run the API and dashboard in separate terminals, then start the simulator in a
+third terminal:
+
+```bash
+uvicorn app.api:app --reload
+python -m http.server 8080 --directory frontend
+python scripts/simulate_edge_feed.py --dataset-root /absolute/path/to/data/grid/test
+```
+
+The dashboard refreshes every 10 seconds and shows the last-hour/last-24-hour
+inspection counts, attention and reject rates, open review backlog, leading
+policy reason codes, the live feed, and evidence for a selected record.
+
 ## Retrieval-augmented procedures
 
 The default local mode uses deterministic lexical retrieval over the approved

@@ -19,6 +19,7 @@ class InspectionState(TypedDict, total=False):
     inspection_id: str
     part_id: str
     image_path: str
+    capture: dict
     record: InspectionRecord
     history: dict
 
@@ -47,7 +48,13 @@ def build_inspection_graph(
             review_status=ReviewStatus.PENDING if outcome.decision is Decision.INSPECT else ReviewStatus.NOT_REQUIRED,
             evidence=evidence,
             checklist=checklist_for(outcome.decision, evidence),
-            metadata={"critical_policy": {"version": outcome.policy_version, "reason_codes": list(outcome.reason_codes)}},
+            metadata={
+                "critical_policy": {
+                    "version": outcome.policy_version,
+                    "reason_codes": list(outcome.reason_codes),
+                },
+                **({"capture": state["capture"]} if state.get("capture") else {}),
+            },
         )
         return {"record": record}
 

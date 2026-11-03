@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .domain import Decision, ReviewResolution
+from .domain import CaptureMetadata, Decision, ReviewResolution
 from .explain import OllamaProcedureExplainer, SafeTemplateExplainer
 from .graph import build_inspection_graph
 from .model_artifacts import download_grid_model
@@ -76,25 +77,72 @@ def healthz():
     return {"status": "ok", "model_repo": os.getenv("GRID_MODEL_REPO_ID")}
 
 
-@app.post("/v1/inspections")
-async def create_inspection(file: UploadFile = File(...), part_id: str = Form(...)):
+async def _run_inspection(
+    file: UploadFile,
+    part_id: str,
+    capture: CaptureMetadata | None = None,
+    response: Response | None = None,
+):
     if file.content_type not in {"image/jpeg", "image/png"}:
         raise HTTPException(415, "Only PNG and JPEG grid images are accepted")
     payload = await file.read()
     if len(payload) > 15 * 1024 * 1024:
         raise HTTPException(413, "Image exceeds the 15 MB limit")
+    if capture and sha256(payload).hexdigest() != capture.image_sha256:
+        raise HTTPException(422, "image_sha256 does not match the uploaded image")
+    graph, repository = runtime()
+    if capture:
+        existing = repository.get_by_frame_id(capture.frame_id)
+        if existing:
+            if response:
+                response.headers["X-Idempotent-Replay"] = "true"
+            return existing
     suffix = Path(file.filename or "image.png").suffix.lower() or ".png"
     upload_dir = Path("runtime/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
     image_path = upload_dir / f"{uuid4()}{suffix}"
     image_path.write_bytes(payload)
     try:
-        graph, _ = runtime()
-        result = graph.invoke({"part_id": part_id, "image_path": str(image_path)})
+        state = {"part_id": part_id, "image_path": str(image_path)}
+        if capture:
+            state["capture"] = capture.model_dump()
+        result = graph.invoke(state)
         return result["record"]
     except Exception as error:
         image_path.unlink(missing_ok=True)
         raise HTTPException(503, f"Inspection unavailable: {error}") from error
+
+
+@app.post("/v1/inspections")
+async def create_inspection(file: UploadFile = File(...), part_id: str = Form(...)):
+    """Manual demo harness; production ingress should use /v1/edge/inspections."""
+    return await _run_inspection(file, part_id)
+
+
+@app.post("/v1/edge/inspections")
+async def create_edge_inspection(
+    response: Response,
+    file: UploadFile = File(...),
+    part_id: str = Form(...),
+    station_id: str = Form(...),
+    camera_id: str = Form(...),
+    frame_id: str = Form(...),
+    captured_at: str = Form(...),
+    image_sha256: str = Form(...),
+):
+    """Camera/edge ingress with immutable capture metadata and frame idempotency."""
+    try:
+        datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise HTTPException(422, "captured_at must be an ISO-8601 timestamp") from error
+    capture = CaptureMetadata(
+        station_id=station_id,
+        camera_id=camera_id,
+        frame_id=frame_id,
+        captured_at=captured_at,
+        image_sha256=image_sha256.lower(),
+    )
+    return await _run_inspection(file, part_id, capture, response)
 
 
 @app.get("/v1/inspections")
@@ -134,4 +182,4 @@ def resolve_review(inspection_id: str, request: ReviewRequest):
 @app.get("/v1/dashboard")
 def dashboard():
     _, repository = runtime()
-    return repository.recent_summary()
+    return repository.dashboard_summary()

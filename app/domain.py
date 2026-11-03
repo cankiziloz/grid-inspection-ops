@@ -26,6 +26,16 @@ class ReviewResolution(BaseModel):
     reviewed_at: str
 
 
+class CaptureMetadata(BaseModel):
+    """Immutable camera/edge context supplied by the automated ingress path."""
+
+    station_id: str = Field(min_length=1, max_length=128)
+    camera_id: str = Field(min_length=1, max_length=128)
+    frame_id: str = Field(min_length=1, max_length=256)
+    captured_at: str = Field(min_length=1, max_length=64)
+    image_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class DefectRegion(BaseModel):
     x: int
     y: int

@@ -24,9 +24,9 @@ Camera or edge collector
 ## Required capture metadata
 
 A production gateway should attach the following immutable fields to every
-capture. The current demo endpoint implements only `part_id` and `file`; the
-remaining fields are the next integration contract and must not be fabricated
-by an operator.
+capture. The portfolio edge endpoint (`POST /v1/edge/inspections`) validates
+all of them, including the image checksum. They are supplied by an automated
+gateway or simulator, never fabricated by a dashboard operator.
 
 | Field | Example | Purpose |
 | --- | --- | --- |
@@ -36,6 +36,9 @@ by an operator.
 | `captured_at` | ISO-8601 UTC timestamp | Enables ordered audit and incident analysis. |
 | `frame_id` | camera-generated unique ID | Enables idempotent retry handling. |
 | `image_sha256` | SHA-256 digest | Detects accidental image corruption or duplication. |
+
+The API treats `frame_id` as an idempotency key. Replaying the same frame
+returns the original inspection rather than creating a second record.
 
 ## Image acceptance rules
 
