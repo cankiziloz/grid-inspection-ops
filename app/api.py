@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from .domain import Decision, ReviewResolution
-from fastapi.middleware.cors import CORSMiddleware
-
 from .explain import OllamaProcedureExplainer, SafeTemplateExplainer
 from .graph import build_inspection_graph
 from .model_artifacts import download_grid_model
+from .pinecone_rag import PineconeSopRetriever
 from .rag import SopRetriever
 from .repository import SqliteInspectionRepository
 from .vision import GridPatchCoreVision
@@ -50,7 +50,13 @@ def runtime():
         repository = SqliteInspectionRepository(os.getenv("DATABASE_PATH", "runtime/inspections.db"))
         vision = GridPatchCoreVision(str(artifact.model_dir), str(artifact.stn_path), model_version=f"{artifact.model_id}@{artifact.revision}", artifact_verified=True)
         app.state.repository = repository
-        retriever = SopRetriever(Path(__file__).parent.parent / "docs")
+        retrieval_provider = os.getenv("RETRIEVAL_PROVIDER", "local").lower()
+        if retrieval_provider == "pinecone":
+            retriever = PineconeSopRetriever.from_environment()
+        elif retrieval_provider == "local":
+            retriever = SopRetriever(Path(__file__).parent.parent / "docs")
+        else:
+            raise RuntimeError("RETRIEVAL_PROVIDER must be 'local' or 'pinecone'")
         if os.getenv("EXPLANATION_PROVIDER", "template").lower() == "ollama":
             explainer = OllamaProcedureExplainer(
                 model=os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b"),

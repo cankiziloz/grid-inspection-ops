@@ -11,11 +11,34 @@ from an automated camera or edge gateway.
 
 ## Retrieval-augmented procedures
 
-V1 uses deterministic, non-agentic retrieval over the approved Markdown SOPs.
-The critical-policy reason code constrains which procedure may be cited; lexical
-ranking then selects the most relevant section. This keeps retrieval stable and
-testable before a future Ollama generator is introduced. Run the
-keyword/natural-language retrieval benchmark with:
+The default local mode uses deterministic lexical retrieval over the approved
+Markdown SOPs, so the project works without cloud credentials. Production-like
+mode uses Pinecone's integrated embeddings: each reviewed SOP section is stored
+as a source-text record; Pinecone embeds that text on ingestion and embeds the
+query on semantic search. The policy reason code remains a metadata filter, so
+semantic similarity can select a section *only inside the SOP documents that
+the deterministic policy has approved*. Retrieval informs the explanation; it
+can never change a visual decision.
+
+Provision a Pinecone integrated-embedding index with field map `text` (for
+example using `llama-text-embed-v2`), then use its host and a namespace:
+
+```bash
+pip install -e '.[dev,rag]'
+export PINECONE_API_KEY=...          # keep this out of Git
+export PINECONE_INDEX_HOST=...       # copied from the Pinecone index details
+export PINECONE_NAMESPACE=grid-inspection-sop-v1
+python scripts/sync_pinecone_sops.py # controlled SOP deployment step
+export RETRIEVAL_PROVIDER=pinecone
+```
+
+`sync_pinecone_sops.py` is idempotent for unchanged sections: stable IDs cause
+an approved section to be upserted rather than duplicated. After any reviewed
+SOP change, run it in CI/CD or as a deliberate release operation before
+deploying the API. Do not set `RETRIEVAL_PROVIDER=pinecone` until the sync has
+succeeded. The API fails closed at startup if its credentials/host are absent.
+
+Run the local keyword/natural-language retrieval regression benchmark with:
 
 ```bash
 python scripts/evaluate_retrieval.py

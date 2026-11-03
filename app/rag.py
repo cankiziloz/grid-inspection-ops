@@ -1,4 +1,4 @@
-"""Deterministic retrieval over the approved portfolio SOP documents.
+"""Local deterministic retrieval over approved portfolio SOP documents.
 
 This is intentionally not an agent: policy reason codes select a constrained
 set of procedures, then lexical scoring ranks sections inside that set. It
@@ -62,34 +62,40 @@ class ProcedureChunk:
     def tokens(self) -> set[str]:
         return set(_TOKEN.findall(self.text.lower()))
 
+    @property
+    def embedding_text(self) -> str:
+        """The complete, provenance-preserving text sent to an embedding model."""
+        return f"{self.document_id}\n{self.title}\n{self.section}\n{self.text}"
+
+
+def load_procedure_chunks(docs_dir: Path) -> list[ProcedureChunk]:
+    """Load only version-controlled, approved SOP sections from Markdown files."""
+    chunks: list[ProcedureChunk] = []
+    for path in sorted(docs_dir.glob("*.md")):
+        if path.name == "README.md":
+            continue
+        text = path.read_text(encoding="utf-8")
+        document_id_match = re.search(r"\*\*Document ID:\*\*\s*([^\s]+)", text)
+        title_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+        if not document_id_match or not title_match:
+            continue
+        document_id, title = document_id_match.group(1), title_match.group(1).strip()
+        sections = re.split(r"^##\s+", text, flags=re.MULTILINE)
+        for raw in sections[1:]:
+            lines = raw.strip().splitlines()
+            if len(lines) < 2:
+                continue
+            section, body = lines[0].strip(), "\n".join(lines[1:]).strip()
+            if body:
+                chunks.append(ProcedureChunk(document_id, title, section, body))
+    return chunks
+
 
 class SopRetriever:
     def __init__(self, docs_dir: Path) -> None:
-        self.chunks = self._load(docs_dir)
+        self.chunks = load_procedure_chunks(docs_dir)
         if not self.chunks:
             raise ValueError(f"No approved SOP chunks found in {docs_dir}")
-
-    @staticmethod
-    def _load(docs_dir: Path) -> list[ProcedureChunk]:
-        chunks: list[ProcedureChunk] = []
-        for path in sorted(docs_dir.glob("*.md")):
-            if path.name == "README.md":
-                continue
-            text = path.read_text(encoding="utf-8")
-            document_id_match = re.search(r"\*\*Document ID:\*\*\s*([^\s]+)", text)
-            title_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
-            if not document_id_match or not title_match:
-                continue
-            document_id, title = document_id_match.group(1), title_match.group(1).strip()
-            sections = re.split(r"^##\s+", text, flags=re.MULTILINE)
-            for raw in sections[1:]:
-                lines = raw.strip().splitlines()
-                if len(lines) < 2:
-                    continue
-                section, body = lines[0].strip(), "\n".join(lines[1:]).strip()
-                if body:
-                    chunks.append(ProcedureChunk(document_id, title, section, body))
-        return chunks
 
     def retrieve(self, record: InspectionRecord, top_k: int = 2) -> list[ProcedureReference]:
         reasons = record.metadata.get("critical_policy", {}).get("reason_codes", [])

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, TypedDict
+from typing import Protocol, TypedDict
 from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
@@ -9,7 +9,10 @@ from langgraph.graph import END, START, StateGraph
 from .domain import Decision, InspectionRecord, ReviewStatus
 from .policy import checklist_for, evaluate
 from .ports import ExplanationService, GridVisionModel, InspectionRepository
-from .rag import SopRetriever
+
+
+class ProcedureRetriever(Protocol):
+    def retrieve(self, record: InspectionRecord, top_k: int = 2): ...
 
 
 class InspectionState(TypedDict, total=False):
@@ -24,7 +27,7 @@ def build_inspection_graph(
     vision: GridVisionModel,
     repository: InspectionRepository,
     explainer: ExplanationService,
-    retriever: SopRetriever | None = None,
+    retriever: ProcedureRetriever | None = None,
 ):
     def validate_input(state: InspectionState) -> InspectionState:
         path = Path(state["image_path"])
