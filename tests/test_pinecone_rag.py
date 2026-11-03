@@ -55,7 +55,8 @@ def test_sync_writes_one_stable_record_per_approved_section():
     assert len(records) == len(expected_chunks)
     assert all(record["_id"].startswith("SOP-") for record in records)
     assert all(
-        {"chunk_text", "document_id", "title", "section", "excerpt"} <= record.keys()
+        {"chunk_text", "document_id", "title", "section", "parent_section", "chunk_index", "excerpt"}
+        <= record.keys()
         for record in records
     )
 
@@ -83,7 +84,14 @@ def test_policy_retrieval_uses_pinecone_semantic_search_inside_allowed_sops():
 
     assert references[0].document_id == "SOP-QA-04"
     search = index.searches[0]
-    assert search["filter"] == {"document_id": {"$in": ["SOP-QA-04", "SOP-ESC-03"]}}
+    assert search["filter"] == {
+        "$or": [
+            {
+                "document_id": {"$eq": "SOP-QA-04"},
+                "parent_section": {"$eq": "Immediate actions"},
+            }
+        ]
+    }
     assert search["score_by"][0]["type"] == "embed"
     assert search["score_by"][0]["field"] == "chunk_text"
     assert "REJECT" in search["score_by"][0]["query"]

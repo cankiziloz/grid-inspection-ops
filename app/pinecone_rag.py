@@ -8,11 +8,12 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .domain import InspectionRecord, ProcedureReference
-from .rag import REASON_DOCUMENTS, ProcedureChunk, load_procedure_chunks
+from .procedure_routing import documents_for_reasons, routes_for_record
+from .rag import ProcedureChunk, load_procedure_chunks
 
 
 class PineconeDocuments(Protocol):
-    def upsert(self, *, namespace: str, documents: list[dict[str, str]]) -> Any: ...
+    def upsert(self, *, namespace: str, documents: list[dict[str, Any]]) -> Any: ...
 
     def search(
         self,
@@ -37,7 +38,7 @@ def chunk_id(chunk: ProcedureChunk) -> str:
 
 def records_for_chunks(
     chunks: list[ProcedureChunk], embedding_field: str = "chunk_text"
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Build documents that satisfy the index's configured embedding field."""
     return [
         {
@@ -46,6 +47,8 @@ def records_for_chunks(
             "document_id": chunk.document_id,
             "title": chunk.title,
             "section": chunk.section,
+            "parent_section": chunk.section,
+            "chunk_index": 0,
             "excerpt": " ".join(chunk.text.split())[:500],
         }
         for chunk in chunks
@@ -63,11 +66,6 @@ def index_approved_procedures(
         raise ValueError(f"No approved SOP chunks found in {docs_dir}")
     index.documents.upsert(namespace=namespace, documents=records)
     return len(records)
-
-
-def _preferred_document_ids(record: InspectionRecord) -> list[str]:
-    reasons = record.metadata.get("critical_policy", {}).get("reason_codes", [])
-    return list(dict.fromkeys(doc for reason in reasons for doc in REASON_DOCUMENTS.get(reason, ())))
 
 
 def _policy_query(record: InspectionRecord) -> str:
@@ -116,11 +114,22 @@ class PineconeSopRetriever:
         )
 
     def retrieve(self, record: InspectionRecord, top_k: int = 2) -> list[ProcedureReference]:
-        allowed_document_ids = _preferred_document_ids(record)
-        document_filter = (
-            {"document_id": {"$in": allowed_document_ids}} if allowed_document_ids else None
-        )
-        return self._search(_policy_query(record), top_k, document_filter)
+        routes = routes_for_record(record)
+        if routes:
+            routing_filter: dict[str, Any] = {
+                "$or": [
+                    {
+                        "document_id": {"$eq": route.document_id},
+                        "parent_section": {"$eq": route.parent_section},
+                    }
+                    for route in routes
+                ]
+            }
+        else:
+            reasons = record.metadata.get("critical_policy", {}).get("reason_codes", [])
+            allowed_document_ids = documents_for_reasons(reasons)
+            routing_filter = {"document_id": {"$in": list(allowed_document_ids)}} if allowed_document_ids else None
+        return self._search(_policy_query(record), top_k, routing_filter)
 
     def search(self, query: str, top_k: int = 3) -> list[ProcedureReference]:
         """Semantic free-text retrieval, used by the versioned RAG benchmark."""
@@ -133,7 +142,7 @@ class PineconeSopRetriever:
             namespace=self.namespace,
             score_by=[{"type": "embed", "field": self.embedding_field, "query": query_text}],
             top_k=top_k,
-            include_fields=["document_id", "title", "section", "excerpt"],
+            include_fields=["document_id", "title", "section", "parent_section", "excerpt"],
             filter=metadata_filter,
         )
         hits = _value(response, "matches", []) or []

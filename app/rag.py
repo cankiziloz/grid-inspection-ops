@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .domain import InspectionRecord, ProcedureReference
+from .procedure_routing import documents_for_reasons, routes_for_record
 
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9_-]{1,}")
 
@@ -34,22 +35,6 @@ def _query_tokens(query: str) -> set[str]:
     if not unresolved and ("resolve" in tokens or "inspect" in tokens):
         tokens.update({"required", "steps"})
     return tokens
-
-REASON_DOCUMENTS: dict[str, tuple[str, ...]] = {
-    "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD": ("SOP-QA-04", "SOP-ESC-03"),
-    "SCORE_IN_REVIEW_BAND": ("SOP-REV-02", "SOP-ESC-03"),
-    "LOW_VALID_COVERAGE": ("SOP-REV-02", "SOP-ESC-03"),
-    "MISSING_IMAGE_QUALITY": ("SOP-REV-02",),
-    "IMAGE_RESOLUTION_TOO_LOW": ("SOP-REV-02", "SOP-ING-01"),
-    "IMAGE_EXPOSURE_OUT_OF_RANGE": ("SOP-REV-02", "SOP-ING-01"),
-    "IMAGE_CONTRAST_TOO_LOW": ("SOP-REV-02", "SOP-ING-01"),
-    "IMAGE_TOO_BLURRY": ("SOP-REV-02", "SOP-ING-01"),
-    "ARTIFACT_NOT_VERIFIED": ("SOP-ESC-03",),
-    "NON_FINITE_ANOMALY_SCORE": ("SOP-ESC-03",),
-    "INVALID_THRESHOLD_ORDER": ("SOP-ESC-03",),
-    "ALL_CRITICAL_GATES_PASSED": ("SOP-ING-01",),
-}
-
 
 @dataclass(frozen=True)
 class ProcedureChunk:
@@ -99,18 +84,23 @@ class SopRetriever:
 
     def retrieve(self, record: InspectionRecord, top_k: int = 2) -> list[ProcedureReference]:
         reasons = record.metadata.get("critical_policy", {}).get("reason_codes", [])
-        preferred_order = list(
-            dict.fromkeys(doc for reason in reasons for doc in REASON_DOCUMENTS.get(reason, ()))
-        )
+        preferred_order = list(documents_for_reasons(reasons))
         preferred_rank = {document_id: rank for rank, document_id in enumerate(preferred_order)}
+        preferred_sections = {(route.document_id, route.parent_section) for route in routes_for_record(record)}
         query = " ".join([record.decision.value, *reasons, *(record.checklist or [])])
-        return self._rank(query, preferred_rank, top_k)
+        return self._rank(query, preferred_rank, preferred_sections, top_k)
 
     def search(self, query: str, top_k: int = 3) -> list[ProcedureReference]:
         """Keyword/natural-language search over approved SOP sections."""
-        return self._rank(query, {}, top_k)
+        return self._rank(query, {}, set(), top_k)
 
-    def _rank(self, query: str, preferred_rank: dict[str, int], top_k: int) -> list[ProcedureReference]:
+    def _rank(
+        self,
+        query: str,
+        preferred_rank: dict[str, int],
+        preferred_sections: set[tuple[str, str]],
+        top_k: int,
+    ) -> list[ProcedureReference]:
         query_tokens = _query_tokens(query)
         ranked: list[tuple[float, ProcedureChunk]] = []
         for chunk in self.chunks:
@@ -121,10 +111,11 @@ class SopRetriever:
             # Lower-priority supporting procedures can never outrank it merely
             # because they happen to share more words with the query.
             policy_boost = 1000.0 - (100.0 * preferred_rank[chunk.document_id]) if chunk.document_id in preferred_rank else 0.0
+            section_route_boost = 10000.0 if (chunk.document_id, chunk.section) in preferred_sections else 0.0
             # Section headings are curated retrieval anchors and deserve more
             # weight than incidental keyword matches in a long body paragraph.
             section_bonus = 5.0 * len(query_tokens & set(_TOKEN.findall(chunk.section.lower())))
-            ranked.append((policy_boost + overlap + section_bonus, chunk))
+            ranked.append((section_route_boost + policy_boost + overlap + section_bonus, chunk))
         selected = [item for item in sorted(ranked, key=lambda item: (-item[0], item[1].document_id, item[1].section)) if item[0] > 0][:top_k]
         return [
             ProcedureReference(

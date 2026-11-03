@@ -21,6 +21,15 @@ semantic similarity can select a section *only inside the SOP documents that
 the deterministic policy has approved*. Retrieval informs the explanation; it
 can never change a visual decision.
 
+For policy-driven inspection outcomes, the additional
+`app/procedure_routing.py` table maps a critical reason code to an approved SOP
+**parent section**. Pinecone then searches only chunks bearing that document ID
+and parent-section metadata. This prevents a generic section such as `Purpose`
+from outranking an operational one such as `Required review steps`. Currently a
+parent section maps to one chunk. A larger future SOP can have multiple child
+chunks with the same `parent_section` and different `chunk_index` values; the
+routing filter remains unchanged while vector search chooses the best child.
+
 Provision a Pinecone integrated-embedding index with embedding field `chunk_text` (for
 example using `llama-text-embed-v2`), then use its host and a namespace:
 
