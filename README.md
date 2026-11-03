@@ -37,6 +37,9 @@ an approved section to be upserted rather than duplicated. After any reviewed
 SOP change, run it in CI/CD or as a deliberate release operation before
 deploying the API. Do not set `RETRIEVAL_PROVIDER=pinecone` until the sync has
 succeeded. The inspection runtime fails closed if its credentials/host are absent.
+For local development these three values can instead live in the ignored `.env`
+file using `KEY=value` syntax. The application loads this file automatically;
+already-exported environment variables take precedence.
 
 Run the local keyword/natural-language retrieval regression benchmark with:
 

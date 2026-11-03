@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +19,8 @@ from .pinecone_rag import PineconeSopRetriever
 from .rag import SopRetriever
 from .repository import SqliteInspectionRepository
 from .vision import GridPatchCoreVision
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 app = FastAPI(title="Grid Inspection Ops", version="0.1.0")
 runtime_root = Path(os.getenv("RUNTIME_DIR", "runtime"))
