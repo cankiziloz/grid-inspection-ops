@@ -87,8 +87,10 @@ def test_policy_retrieval_uses_pinecone_semantic_search_inside_allowed_sops():
     assert search["filter"] == {
         "$or": [
             {
-                "document_id": {"$eq": "SOP-QA-04"},
-                "parent_section": {"$eq": "Immediate actions"},
+                "$and": [
+                    {"document_id": {"$eq": "SOP-QA-04"}},
+                    {"parent_section": {"$eq": "Immediate actions"}},
+                ]
             }
         ]
     }

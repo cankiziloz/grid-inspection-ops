@@ -119,8 +119,10 @@ class PineconeSopRetriever:
             routing_filter: dict[str, Any] = {
                 "$or": [
                     {
-                        "document_id": {"$eq": route.document_id},
-                        "parent_section": {"$eq": route.parent_section},
+                        "$and": [
+                            {"document_id": {"$eq": route.document_id}},
+                            {"parent_section": {"$eq": route.parent_section}},
+                        ]
                     }
                     for route in routes
                 ]
