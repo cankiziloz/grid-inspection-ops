@@ -4,8 +4,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
-from .rag import SopRetriever
+
+class SearchRetriever(Protocol):
+    def search(self, query: str, top_k: int = 3): ...
 
 
 @dataclass(frozen=True)
@@ -19,7 +22,7 @@ def load_cases(path: Path) -> list[RetrievalCase]:
     return [RetrievalCase(**item) for item in json.loads(path.read_text())]
 
 
-def evaluate(retriever: SopRetriever, cases: list[RetrievalCase]) -> dict[str, float]:
+def evaluate(retriever: SearchRetriever, cases: list[RetrievalCase]) -> dict[str, float]:
     if not cases:
         raise ValueError("Retrieval benchmark has no cases")
     recall_at_1 = recall_at_3 = section_at_1 = 0

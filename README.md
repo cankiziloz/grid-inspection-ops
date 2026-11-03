@@ -49,6 +49,23 @@ Run the local keyword/natural-language retrieval regression benchmark with:
 python scripts/evaluate_retrieval.py
 ```
 
+The test suite checks Pinecone request/response contracts with a fake index.
+After every SOP indexing release, measure the *real* vector retrieval quality
+against the live Pinecone namespace separately:
+
+```bash
+python scripts/evaluate_pinecone_retrieval.py
+# Optional CI/release quality gates:
+python scripts/evaluate_pinecone_retrieval.py \
+  --min-recall-at-1 0.90 --min-section-accuracy-at-1 0.80
+```
+
+The benchmark prints the expected section and the returned top three citations
+for each versioned query, then reports Recall@1, Recall@3, MRR and exact
+section accuracy@1. Its four initial cases are a small regression set, not a
+claim that every future SOP question is covered. Add a labelled case whenever a
+reviewer observes a poor retrieval result.
+
 ## Optional local Ollama explanations
 
 The default is the deterministic template explainer. To enable a local Ollama
