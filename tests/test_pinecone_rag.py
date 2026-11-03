@@ -11,26 +11,36 @@ class FakePineconeIndex:
     def __init__(self):
         self.upserts: list[tuple[str, list[dict[str, str]]]] = []
         self.searches: list[dict] = []
+        self.documents = FakePineconeDocuments(self)
 
-    def upsert_records(self, *, namespace, records):
-        self.upserts.append((namespace, records))
 
-    def search_records(self, *, namespace, query, fields):
-        self.searches.append({"namespace": namespace, "query": query, "fields": fields})
-        return {
-            "result": {
-                "hits": [
-                    {
-                        "_score": 0.91,
-                        "fields": {
-                            "document_id": "SOP-QA-04",
-                            "title": "Reject and Quarantine Policy",
-                            "section": "Immediate actions",
-                            "excerpt": "Quarantine the part and preserve evidence.",
-                        },
-                    }
-                ]
+class FakePineconeDocuments:
+    def __init__(self, index: FakePineconeIndex):
+        self.index = index
+
+    def upsert(self, *, namespace, documents):
+        self.index.upserts.append((namespace, documents))
+
+    def search(self, *, namespace, score_by, top_k, include_fields, filter=None):
+        self.index.searches.append(
+            {
+                "namespace": namespace,
+                "score_by": score_by,
+                "top_k": top_k,
+                "include_fields": include_fields,
+                "filter": filter,
             }
+        )
+        return {
+            "matches": [
+                {
+                    "score": 0.91,
+                    "document_id": "SOP-QA-04",
+                    "title": "Reject and Quarantine Policy",
+                    "section": "Immediate actions",
+                    "excerpt": "Quarantine the part and preserve evidence.",
+                }
+            ]
         }
 
 
@@ -62,13 +72,15 @@ def test_policy_retrieval_uses_pinecone_semantic_search_inside_allowed_sops():
     references = retriever.retrieve(record)
 
     assert references[0].document_id == "SOP-QA-04"
-    query = index.searches[0]["query"]
-    assert query["filter"] == {"document_id": {"$in": ["SOP-QA-04", "SOP-ESC-03"]}}
-    assert "REJECT" in query["inputs"]["text"]
+    search = index.searches[0]
+    assert search["filter"] == {"document_id": {"$in": ["SOP-QA-04", "SOP-ESC-03"]}}
+    assert search["score_by"][0]["type"] == "embed"
+    assert search["score_by"][0]["field"] == "text"
+    assert "REJECT" in search["score_by"][0]["query"]
 
 
 def test_free_text_semantic_search_has_no_policy_filter():
     index = FakePineconeIndex()
     PineconeSopRetriever(index, "grid-inspection-sop-v1").search("What happens after a reject?")
 
-    assert "filter" not in index.searches[0]["query"]
+    assert index.searches[0]["filter"] is None

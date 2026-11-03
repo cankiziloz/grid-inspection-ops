@@ -17,10 +17,22 @@ from .domain import InspectionRecord, ProcedureReference
 from .rag import REASON_DOCUMENTS, ProcedureChunk, load_procedure_chunks
 
 
-class PineconeIndex(Protocol):
-    def search_records(self, *, namespace: str, query: dict[str, Any], fields: list[str]) -> Any: ...
+class PineconeDocuments(Protocol):
+    def upsert(self, *, namespace: str, documents: list[dict[str, str]]) -> Any: ...
 
-    def upsert_records(self, namespace: str, records: list[dict[str, str]]) -> Any: ...
+    def search(
+        self,
+        *,
+        namespace: str,
+        score_by: list[dict[str, str]],
+        top_k: int,
+        include_fields: list[str],
+        filter: dict[str, Any] | None = None,
+    ) -> Any: ...
+
+
+class PineconeIndex(Protocol):
+    documents: PineconeDocuments
 
 
 def chunk_id(chunk: ProcedureChunk) -> str:
@@ -48,7 +60,7 @@ def index_approved_procedures(index: PineconeIndex, docs_dir: Path, namespace: s
     records = records_for_chunks(load_procedure_chunks(docs_dir))
     if not records:
         raise ValueError(f"No approved SOP chunks found in {docs_dir}")
-    index.upsert_records(namespace=namespace, records=records)
+    index.documents.upsert(namespace=namespace, documents=records)
     return len(records)
 
 
@@ -95,7 +107,7 @@ class PineconeSopRetriever:
         except ImportError as error:
             raise RuntimeError("Install the Pinecone extra: pip install -e '.[rag]'") from error
         client = Pinecone(api_key=api_key)
-        return cls(client.Index(host=index_host), os.getenv("PINECONE_NAMESPACE", "grid-inspection-sop-v1"))
+        return cls(client.index(host=index_host), os.getenv("PINECONE_NAMESPACE", "grid-inspection-sop-v1"))
 
     def retrieve(self, record: InspectionRecord, top_k: int = 2) -> list[ProcedureReference]:
         allowed_document_ids = _preferred_document_ids(record)
@@ -111,24 +123,21 @@ class PineconeSopRetriever:
     def _search(
         self, query_text: str, top_k: int, metadata_filter: dict[str, Any] | None
     ) -> list[ProcedureReference]:
-        query: dict[str, Any] = {"inputs": {"text": query_text}, "top_k": top_k}
-        if metadata_filter:
-            query["filter"] = metadata_filter
-        response = self.index.search_records(
+        response = self.index.documents.search(
             namespace=self.namespace,
-            query=query,
-            fields=["document_id", "title", "section", "excerpt"],
+            score_by=[{"type": "embed", "field": "text", "query": query_text}],
+            top_k=top_k,
+            include_fields=["document_id", "title", "section", "excerpt"],
+            filter=metadata_filter,
         )
-        result = _value(response, "result", response)
-        hits = _value(result, "hits", []) or []
+        hits = _value(response, "matches", []) or []
         references: list[ProcedureReference] = []
         for hit in hits:
-            fields = _value(hit, "fields", {}) or {}
-            document_id = _value(fields, "document_id")
-            title = _value(fields, "title")
-            section = _value(fields, "section")
-            excerpt = _value(fields, "excerpt")
-            score = _value(hit, "_score", _value(hit, "score", 0.0))
+            document_id = _value(hit, "document_id")
+            title = _value(hit, "title")
+            section = _value(hit, "section")
+            excerpt = _value(hit, "excerpt")
+            score = _value(hit, "score", 0.0)
             if all(isinstance(value, str) and value for value in (document_id, title, section, excerpt)):
                 references.append(
                     ProcedureReference(

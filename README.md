@@ -13,9 +13,10 @@ from an automated camera or edge gateway.
 
 The default local mode uses deterministic lexical retrieval over the approved
 Markdown SOPs, so the project works without cloud credentials. Production-like
-mode uses Pinecone's integrated embeddings: each reviewed SOP section is stored
-as a source-text record; Pinecone embeds that text on ingestion and embeds the
-query on semantic search. The policy reason code remains a metadata filter, so
+mode uses Pinecone's integrated embeddings and current Documents API: each
+reviewed SOP section is stored as a source-text document; Pinecone embeds that
+text on ingestion and embeds the query on semantic search. The policy reason
+code remains a metadata filter, so
 semantic similarity can select a section *only inside the SOP documents that
 the deterministic policy has approved*. Retrieval informs the explanation; it
 can never change a visual decision.
