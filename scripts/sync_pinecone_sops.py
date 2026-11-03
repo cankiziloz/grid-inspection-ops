@@ -7,11 +7,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from app.pinecone_rag import PineconeSopRetriever, index_approved_procedures
 
 
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
+    load_dotenv(root / ".env")
     retriever = PineconeSopRetriever.from_environment()
     count = index_approved_procedures(retriever.index, root / "docs", retriever.namespace)
     print(f"Indexed {count} approved SOP sections in namespace {retriever.namespace!r}.")
