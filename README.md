@@ -75,6 +75,14 @@ section accuracy@1. Its four initial cases are a small regression set, not a
 claim that every future SOP question is covered. Add a labelled case whenever a
 reviewer observes a poor retrieval result.
 
+The prior command intentionally measures unconstrained semantic search. Verify
+the production inspection path separately after each Pinecone sync; this path
+starts with a policy reason code and applies the SOP parent-section filter:
+
+```bash
+python scripts/evaluate_pinecone_policy_routing.py
+```
+
 ## Optional local Ollama explanations
 
 The default is the deterministic template explainer. To enable a local Ollama

@@ -1,0 +1,26 @@
+[
+  {
+    "decision": "REJECT",
+    "reason_code": "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD",
+    "document_id": "SOP-QA-04",
+    "parent_section": "Immediate actions"
+  },
+  {
+    "decision": "INSPECT",
+    "reason_code": "SCORE_IN_REVIEW_BAND",
+    "document_id": "SOP-REV-02",
+    "parent_section": "Required review steps"
+  },
+  {
+    "decision": "INSPECT",
+    "reason_code": "ARTIFACT_NOT_VERIFIED",
+    "document_id": "SOP-ESC-03",
+    "parent_section": "Escalate when"
+  },
+  {
+    "decision": "PASS",
+    "reason_code": "ALL_CRITICAL_GATES_PASSED",
+    "document_id": "SOP-ING-01",
+    "parent_section": "Response handling"
+  }
+]
