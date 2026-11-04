@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Decision(str, Enum):
@@ -19,11 +19,37 @@ class ReviewStatus(str, Enum):
     RESOLVED = "RESOLVED"
 
 
+class ReviewReasonCode(str, Enum):
+    """Operator's structured interpretation of an initially INSPECT image."""
+
+    TRUE_DEFECT_CONFIRMED = "TRUE_DEFECT_CONFIRMED"
+    NO_DEFECT_FOUND = "NO_DEFECT_FOUND"
+    ACCEPTED_PROCESS_RESIDUE = "ACCEPTED_PROCESS_RESIDUE"
+    ACCEPTABLE_VARIATION = "ACCEPTABLE_VARIATION"
+    CAPTURE_ARTIFACT = "CAPTURE_ARTIFACT"
+    POLICY_EXCEPTION = "POLICY_EXCEPTION"
+
+
 class ReviewResolution(BaseModel):
     reviewer_id: str = Field(min_length=1, max_length=128)
     final_decision: Decision
     reason: str = Field(min_length=3, max_length=2000)
     reviewed_at: str
+    reason_code: ReviewReasonCode | None = None
+
+    @model_validator(mode="after")
+    def reason_code_matches_disposition(self) -> "ReviewResolution":
+        if self.reason_code is None:
+            return self
+        if self.reason_code is ReviewReasonCode.TRUE_DEFECT_CONFIRMED:
+            expected = Decision.REJECT
+        else:
+            expected = Decision.PASS
+        if self.final_decision is not expected:
+            raise ValueError(
+                f"{self.reason_code.value} requires final decision {expected.value}."
+            )
+        return self
 
 
 class CaptureMetadata(BaseModel):

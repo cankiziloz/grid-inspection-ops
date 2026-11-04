@@ -130,29 +130,49 @@ class SqliteInspectionRepository:
 
     def dashboard_summary(self) -> dict:
         """UTC-windowed counters for the live operations dashboard."""
-        windows = {"1h": "-1 hour", "24h": "-24 hours"}
+        windows = {
+            "24h": "-24 hours",
+            "7d": "-7 days",
+            "30d": "-30 days",
+            "all": None,
+        }
         result: dict = {
             "windows": {},
             "review_queue_depth": 0,
             "oldest_pending_review_minutes": None,
             "review_outcomes": {},
-            "top_policy_reasons_24h": [],
+            "review_reason_counts": [],
         }
         with self._connect() as connection:
             for name, interval in windows.items():
+                where = "" if interval is None else "WHERE created_at >= datetime('now', ?)"
+                parameters: tuple[str, ...] = () if interval is None else (interval,)
                 rows = connection.execute(
-                    "SELECT decision, COUNT(*) AS count FROM inspections "
-                    "WHERE created_at >= datetime('now', ?) GROUP BY decision",
-                    (interval,),
+                    f"SELECT decision, COUNT(*) AS count FROM inspections {where} GROUP BY decision",
+                    parameters,
                 ).fetchall()
                 counts = {decision.value: 0 for decision in (Decision.PASS, Decision.INSPECT, Decision.REJECT)}
                 counts.update({row["decision"]: row["count"] for row in rows})
                 total = sum(counts.values())
+                policy_reasons: Counter[str] = Counter()
+                record_rows = connection.execute(
+                    f"SELECT record_json FROM inspections {where}",
+                    parameters,
+                ).fetchall()
+                for row in record_rows:
+                    record = InspectionRecord.model_validate_json(row["record_json"])
+                    policy_reasons.update(
+                        record.metadata.get("critical_policy", {}).get("reason_codes", [])
+                    )
                 result["windows"][name] = {
                     "total": total,
                     "decision_counts": counts,
                     "attention_rate": (counts["INSPECT"] + counts["REJECT"]) / total if total else 0.0,
                     "reject_rate": counts["REJECT"] / total if total else 0.0,
+                    "top_policy_reasons": [
+                        {"reason_code": reason, "count": count}
+                        for reason, count in policy_reasons.most_common(5)
+                    ],
                 }
             review_rows = connection.execute(
                 "SELECT final_decision, COUNT(*) AS count FROM inspections "
@@ -168,6 +188,9 @@ class SqliteInspectionRepository:
                 "operator_reject": outcomes[Decision.REJECT.value],
                 "confirmed_defect_rate": outcomes[Decision.REJECT.value] / resolved if resolved else 0.0,
             }
+            all_records = connection.execute(
+                "SELECT record_json FROM inspections WHERE review_status = 'RESOLVED'"
+            ).fetchall()
             result["review_queue_depth"] = connection.execute(
                 "SELECT COUNT(*) AS count FROM inspections WHERE review_status = 'PENDING'"
             ).fetchone()["count"]
@@ -178,15 +201,14 @@ class SqliteInspectionRepository:
             result["oldest_pending_review_minutes"] = (
                 round(oldest_pending_minutes, 1) if oldest_pending_minutes is not None else None
             )
-            records = connection.execute(
-                "SELECT record_json FROM inspections WHERE created_at >= datetime('now', '-24 hours')"
-            ).fetchall()
-        reasons: Counter[str] = Counter()
-        for row in records:
+        review_reasons: Counter[str] = Counter()
+        for row in all_records:
             record = InspectionRecord.model_validate_json(row["record_json"])
-            reasons.update(record.metadata.get("critical_policy", {}).get("reason_codes", []))
-        result["top_policy_reasons_24h"] = [
-            {"reason_code": reason, "count": count} for reason, count in reasons.most_common(5)
+            code = record.review.reason_code.value if record.review and record.review.reason_code else "LEGACY_UNCLASSIFIED"
+            review_reasons[code] += 1
+        result["review_reason_counts"] = [
+            {"reason_code": reason, "count": count}
+            for reason, count in review_reasons.most_common()
         ]
         return result
 

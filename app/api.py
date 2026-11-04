@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .domain import CaptureMetadata, Decision, ReviewResolution
+from .domain import CaptureMetadata, Decision, ReviewReasonCode, ReviewResolution
 from .explain import OllamaProcedureExplainer, SafeTemplateExplainer
 from .graph import build_inspection_graph
 from .model_artifacts import download_grid_model
@@ -40,6 +40,7 @@ app.add_middleware(
 class ReviewRequest(BaseModel):
     reviewer_id: str = Field(min_length=1, max_length=128)
     final_decision: Decision
+    reason_code: ReviewReasonCode
     reason: str = Field(min_length=3, max_length=2000)
 
 
@@ -170,6 +171,7 @@ def resolve_review(inspection_id: str, request: ReviewRequest):
     review = ReviewResolution(
         reviewer_id=request.reviewer_id,
         final_decision=request.final_decision,
+        reason_code=request.reason_code,
         reason=request.reason,
         reviewed_at=datetime.now(timezone.utc).isoformat(),
     )

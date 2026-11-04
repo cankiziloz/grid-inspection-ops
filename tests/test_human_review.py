@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.domain import Decision, InspectionRecord, ReviewResolution, ReviewStatus
+from app.domain import Decision, InspectionRecord, ReviewReasonCode, ReviewResolution, ReviewStatus
 from app.repository import SqliteInspectionRepository
 
 
@@ -13,10 +13,14 @@ def pending_record() -> InspectionRecord:
     )
 
 
-def review(decision: Decision = Decision.REJECT) -> ReviewResolution:
+def review(
+    decision: Decision = Decision.REJECT,
+    reason_code: ReviewReasonCode | None = None,
+) -> ReviewResolution:
     return ReviewResolution(reviewer_id="operator-7", final_decision=decision,
-                            reason="Mask matches a confirmed defect.",
-                            reviewed_at=datetime.now(timezone.utc).isoformat())
+                            reason="Review decision recorded with evidence.",
+                            reviewed_at=datetime.now(timezone.utc).isoformat(),
+                            reason_code=reason_code)
 
 
 def test_human_review_resolves_pending_inspection_and_is_immutable(tmp_path):
@@ -49,8 +53,14 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
                 review_status=ReviewStatus.PENDING,
             )
         )
-    repository.resolve_review("review-pass", review(Decision.PASS))
-    repository.resolve_review("review-reject", review(Decision.REJECT))
+    repository.resolve_review(
+        "review-pass",
+        review(Decision.PASS, ReviewReasonCode.ACCEPTED_PROCESS_RESIDUE),
+    )
+    repository.resolve_review(
+        "review-reject",
+        review(Decision.REJECT, ReviewReasonCode.TRUE_DEFECT_CONFIRMED),
+    )
 
     summary = repository.dashboard_summary()
     outcomes = summary["review_outcomes"]
@@ -63,3 +73,14 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
         "operator_reject": 1,
         "confirmed_defect_rate": 0.5,
     }
+    assert {
+        item["reason_code"]: item["count"] for item in summary["review_reason_counts"]
+    } == {
+        "ACCEPTED_PROCESS_RESIDUE": 1,
+        "TRUE_DEFECT_CONFIRMED": 1,
+    }
+
+
+def test_review_reason_code_requires_its_matching_disposition():
+    with pytest.raises(ValueError, match="requires final decision REJECT"):
+        review(Decision.PASS, ReviewReasonCode.TRUE_DEFECT_CONFIRMED)
