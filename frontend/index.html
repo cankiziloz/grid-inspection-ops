@@ -60,7 +60,7 @@
 </main>
 <script>
   const api=window.GRID_API_URL||`${location.protocol}//${location.hostname}:8000`;
-  let rows=[], selected=null, period='1h', dashboard=null;
+  let rows=[], selected=null, period='1h', dashboard=null, reviewSubmitting=false;
   const $=selector=>document.querySelector(selector);
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
   const badge=value=>`<span class="badge ${esc(value)}">${esc(value)}</span>`;
@@ -118,10 +118,17 @@
 
   function pick(id) { const record=rows.find(item=>item.inspection_id===id); if(record){renderDetail(record);renderQueue();} }
   async function resolveReview(finalDecision) {
+    if (reviewSubmitting) return;
     const reviewer=$('#reviewer').value.trim(), reason=$('#reason').value.trim();
     if(!reviewer||reason.length<3) return alert('Reviewer ID and a reason are required.');
+    reviewSubmitting=true;
+    document.querySelectorAll('#detail .actions button').forEach(button=>button.disabled=true);
     try { await get(`/v1/inspections/${selected.inspection_id}/review`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer_id:reviewer,final_decision:finalDecision,reason})}); selected=null; await refresh(); }
     catch(error) { alert(`Review could not be saved: ${error.message}`); }
+    finally {
+      reviewSubmitting=false;
+      document.querySelectorAll('#detail .actions button').forEach(button=>button.disabled=false);
+    }
   }
 
   async function refresh() {
