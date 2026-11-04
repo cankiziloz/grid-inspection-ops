@@ -123,7 +123,13 @@
     if(!reviewer||reason.length<3) return alert('Reviewer ID and a reason are required.');
     reviewSubmitting=true;
     document.querySelectorAll('#detail .actions button').forEach(button=>button.disabled=true);
-    try { await get(`/v1/inspections/${selected.inspection_id}/review`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer_id:reviewer,final_decision:finalDecision,reason})}); selected=null; await refresh(); }
+    try {
+      await get(`/v1/inspections/${selected.inspection_id}/review`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer_id:reviewer,final_decision:finalDecision,reason})});
+      selected=null;
+      $('#detail').className='empty';
+      $('#detail').textContent='Review saved. Select another inspection from the queue.';
+      await refresh();
+    }
     catch(error) { alert(`Review could not be saved: ${error.message}`); }
     finally {
       reviewSubmitting=false;
