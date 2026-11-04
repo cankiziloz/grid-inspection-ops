@@ -131,7 +131,12 @@ class SqliteInspectionRepository:
     def dashboard_summary(self) -> dict:
         """UTC-windowed counters for the live operations dashboard."""
         windows = {"1h": "-1 hour", "24h": "-24 hours"}
-        result: dict = {"windows": {}, "review_queue_depth": 0, "top_policy_reasons_24h": []}
+        result: dict = {
+            "windows": {},
+            "review_queue_depth": 0,
+            "oldest_pending_review_minutes": None,
+            "top_policy_reasons_24h": [],
+        }
         with self._connect() as connection:
             for name, interval in windows.items():
                 rows = connection.execute(
@@ -148,9 +153,31 @@ class SqliteInspectionRepository:
                     "attention_rate": (counts["INSPECT"] + counts["REJECT"]) / total if total else 0.0,
                     "reject_rate": counts["REJECT"] / total if total else 0.0,
                 }
+                review_rows = connection.execute(
+                    "SELECT final_decision, COUNT(*) AS count FROM inspections "
+                    "WHERE created_at >= datetime('now', ?) AND decision = 'INSPECT' "
+                    "AND review_status = 'RESOLVED' GROUP BY final_decision",
+                    (interval,),
+                ).fetchall()
+                outcomes = {Decision.PASS.value: 0, Decision.REJECT.value: 0}
+                outcomes.update({row["final_decision"]: row["count"] for row in review_rows})
+                resolved = sum(outcomes.values())
+                result["windows"][name]["review_outcomes"] = {
+                    "resolved": resolved,
+                    "operator_pass": outcomes[Decision.PASS.value],
+                    "operator_reject": outcomes[Decision.REJECT.value],
+                    "confirmed_defect_rate": outcomes[Decision.REJECT.value] / resolved if resolved else 0.0,
+                }
             result["review_queue_depth"] = connection.execute(
                 "SELECT COUNT(*) AS count FROM inspections WHERE review_status = 'PENDING'"
             ).fetchone()["count"]
+            oldest_pending_minutes = connection.execute(
+                "SELECT (julianday('now') - julianday(MIN(created_at))) * 24 * 60 AS minutes "
+                "FROM inspections WHERE review_status = 'PENDING'"
+            ).fetchone()["minutes"]
+            result["oldest_pending_review_minutes"] = (
+                round(oldest_pending_minutes, 1) if oldest_pending_minutes is not None else None
+            )
             records = connection.execute(
                 "SELECT record_json FROM inspections WHERE created_at >= datetime('now', '-24 hours')"
             ).fetchall()
