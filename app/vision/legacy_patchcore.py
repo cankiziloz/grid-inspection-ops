@@ -111,7 +111,7 @@ class GridPatchCoreVision:
         quality = self._quality(image)
         tensor = self.preprocess(image).unsqueeze(0).to(self.device)
         with torch.inference_mode():
-            corrected, _, valid = self.stn(tensor)
+            corrected, angles, valid = self.stn(tensor)
             self.features = []
             _ = self.backbone(corrected)
             maps = []
@@ -122,9 +122,14 @@ class GridPatchCoreVision:
                 feature_map = score.view(1, 1, height, width)
                 maps.append(F.interpolate(feature_map, size=tensor.shape[-2:], mode="bilinear", align_corners=True))
             score_map = torch.stack(maps).mean(dim=0) * valid
-        mask = (score_map[0, 0] >= self.review_threshold) & valid[0, 0].bool()
+        corrected_mask = (score_map[0, 0] >= self.review_threshold) & valid[0, 0].bool()
+        # PatchCore operates in the STN-normalized coordinate system. Operators
+        # inspect the raw camera capture, so project maps back with the inverse
+        # rotation before persisting visual evidence or region coordinates.
+        mask = self._inverse_stn_warp(corrected_mask.float(), angles[0], mode="nearest") > 0.5
+        source_scores = self._inverse_stn_warp(score_map[0, 0], angles[0], mode="bilinear")
         score = float(score_map.max().item())
-        mask_uri = self._save_mask(image_path.stem, mask)
+        mask_uri, mask_overlay_uri = self._save_mask(image_path.stem, mask)
         return VisionEvidence(
             model_version=self.model_version,
             score=score,
@@ -134,7 +139,8 @@ class GridPatchCoreVision:
             artifact_verified=self.artifact_verified,
             quality=quality,
             mask_uri=str(mask_uri),
-            regions=self._regions(mask.cpu().numpy(), score_map[0, 0].cpu().numpy()),
+            mask_overlay_uri=str(mask_overlay_uri),
+            regions=self._regions(mask.cpu().numpy(), source_scores.cpu().numpy()),
         )
 
     @staticmethod
@@ -155,10 +161,37 @@ class GridPatchCoreVision:
             reasons.append("IMAGE_TOO_BLURRY")
         return ImageQuality(width=image.width, height=image.height, mean_luminance=mean, contrast=contrast, laplacian_variance=sharpness, acceptable=not reasons, failure_reasons=reasons)
 
-    def _save_mask(self, stem: str, mask: torch.Tensor) -> Path:
-        path = self.output_dir / f"{stem}-{os.urandom(6).hex()}.png"
-        cv2.imwrite(str(path), mask.numpy().astype(np.uint8) * 255)
-        return path
+    @staticmethod
+    def _inverse_stn_warp(values: torch.Tensor, angle: torch.Tensor, mode: str) -> torch.Tensor:
+        """Map a STN-corrected score/mask image back into source-camera coordinates."""
+        height, width = values.shape[-2:]
+        cosine, sine = torch.cos(angle), torch.sin(angle)
+        zero = torch.zeros_like(cosine)
+        inverse_theta = torch.stack(
+            (torch.stack((cosine, sine, zero)), torch.stack((-sine, cosine, zero)))
+        ).unsqueeze(0)
+        grid = F.affine_grid(inverse_theta, (1, 1, height, width), align_corners=True)
+        return F.grid_sample(
+            values.reshape(1, 1, height, width),
+            grid,
+            mode=mode,
+            padding_mode="zeros",
+            align_corners=True,
+        )[0, 0]
+
+    def _save_mask(self, stem: str, mask: torch.Tensor) -> tuple[Path, Path]:
+        token = os.urandom(6).hex()
+        path = self.output_dir / f"{stem}-{token}.png"
+        overlay_path = self.output_dir / f"{stem}-{token}-overlay.png"
+        pixels = mask.cpu().numpy().astype(np.uint8) * 255
+        cv2.imwrite(str(path), pixels)
+        # BGRA: transparent elsewhere, red highlight over anomalous pixels.
+        overlay = np.zeros((*pixels.shape, 4), dtype=np.uint8)
+        overlay[..., 2] = 255
+        overlay[..., 1] = 70
+        overlay[..., 3] = (pixels > 0).astype(np.uint8) * 165
+        cv2.imwrite(str(overlay_path), overlay)
+        return path, overlay_path
 
     @staticmethod
     def _regions(mask: np.ndarray, scores: np.ndarray) -> list[DefectRegion]:

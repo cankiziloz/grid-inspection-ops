@@ -91,6 +91,7 @@ class VisionEvidence(BaseModel):
     artifact_verified: bool = False
     quality: ImageQuality | None = None
     mask_uri: str | None = None
+    mask_overlay_uri: str | None = None
     regions: list[DefectRegion] = Field(default_factory=list)
 
 
