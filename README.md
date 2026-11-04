@@ -37,6 +37,10 @@ python -m http.server 8080 --directory frontend
 python scripts/simulate_edge_feed.py --dataset-root /absolute/path/to/data/grid/test
 ```
 
+Open the dashboard at `http://localhost:8080` (or `http://127.0.0.1:8080`).
+The API accepts both local origins by default; override them for a deployed UI
+with the comma-separated `CORS_ORIGINS` environment variable.
+
 The dashboard refreshes every 10 seconds and shows the last-hour/last-24-hour
 inspection counts, attention and reject rates, open review backlog, leading
 policy reason codes, the live feed, and evidence for a selected record.

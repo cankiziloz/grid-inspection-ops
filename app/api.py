@@ -29,7 +29,9 @@ runtime_root.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=runtime_root), name="runtime-files")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:8080").split(","),
+    allow_origins=os.getenv(
+        "CORS_ORIGINS", "http://localhost:8080,http://127.0.0.1:8080"
+    ).split(","),
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
