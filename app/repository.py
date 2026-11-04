@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .domain import Decision, InspectionRecord, ReviewResolution, ReviewStatus
@@ -128,23 +129,40 @@ class SqliteInspectionRepository:
             ).fetchall()
         return {"window": limit, "decision_counts": {row["decision"]: row["count"] for row in rows}}
 
+    @staticmethod
+    def _reviewed_at(record: InspectionRecord) -> datetime | None:
+        if not record.review:
+            return None
+        try:
+            reviewed_at = datetime.fromisoformat(record.review.reviewed_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if reviewed_at.tzinfo is None:
+            reviewed_at = reviewed_at.replace(tzinfo=timezone.utc)
+        return reviewed_at.astimezone(timezone.utc)
+
     def dashboard_summary(self) -> dict:
         """UTC-windowed counters for the live operations dashboard."""
         windows = {
-            "24h": "-24 hours",
-            "7d": "-7 days",
-            "30d": "-30 days",
-            "all": None,
+            "24h": ("-24 hours", timedelta(hours=24)),
+            "7d": ("-7 days", timedelta(days=7)),
+            "30d": ("-30 days", timedelta(days=30)),
+            "all": (None, None),
         }
         result: dict = {
             "windows": {},
             "review_queue_depth": 0,
             "oldest_pending_review_minutes": None,
-            "review_outcomes": {},
-            "review_reason_counts": [],
         }
         with self._connect() as connection:
-            for name, interval in windows.items():
+            resolved_rows = connection.execute(
+                "SELECT record_json FROM inspections WHERE review_status = 'RESOLVED'"
+            ).fetchall()
+            resolved_records = [
+                InspectionRecord.model_validate_json(row["record_json"]) for row in resolved_rows
+            ]
+            now = datetime.now(timezone.utc)
+            for name, (interval, review_window) in windows.items():
                 where = "" if interval is None else "WHERE created_at >= datetime('now', ?)"
                 parameters: tuple[str, ...] = () if interval is None else (interval,)
                 rows = connection.execute(
@@ -164,33 +182,47 @@ class SqliteInspectionRepository:
                     policy_reasons.update(
                         record.metadata.get("critical_policy", {}).get("reason_codes", [])
                     )
+                reviewed_records = [
+                    record
+                    for record in resolved_records
+                    if review_window is None
+                    or (
+                        (reviewed_at := self._reviewed_at(record)) is not None
+                        and reviewed_at >= now - review_window
+                    )
+                ]
+                review_outcomes = {Decision.PASS.value: 0, Decision.REJECT.value: 0}
+                review_reasons: Counter[str] = Counter()
+                for record in reviewed_records:
+                    if record.final_decision:
+                        review_outcomes[record.final_decision.value] += 1
+                    code = (
+                        record.review.reason_code.value
+                        if record.review and record.review.reason_code
+                        else "LEGACY_UNCLASSIFIED"
+                    )
+                    review_reasons[code] += 1
+                resolved = sum(review_outcomes.values())
                 result["windows"][name] = {
                     "total": total,
                     "decision_counts": counts,
                     "attention_rate": (counts["INSPECT"] + counts["REJECT"]) / total if total else 0.0,
                     "reject_rate": counts["REJECT"] / total if total else 0.0,
+                    "review_outcomes": {
+                        "resolved": resolved,
+                        "operator_pass": review_outcomes[Decision.PASS.value],
+                        "operator_reject": review_outcomes[Decision.REJECT.value],
+                        "confirmed_defect_rate": review_outcomes[Decision.REJECT.value] / resolved if resolved else 0.0,
+                    },
+                    "review_reason_counts": [
+                        {"reason_code": reason, "count": count}
+                        for reason, count in review_reasons.most_common()
+                    ],
                     "top_policy_reasons": [
                         {"reason_code": reason, "count": count}
                         for reason, count in policy_reasons.most_common(5)
                     ],
                 }
-            review_rows = connection.execute(
-                "SELECT final_decision, COUNT(*) AS count FROM inspections "
-                "WHERE decision = 'INSPECT' AND review_status = 'RESOLVED' "
-                "GROUP BY final_decision"
-            ).fetchall()
-            outcomes = {Decision.PASS.value: 0, Decision.REJECT.value: 0}
-            outcomes.update({row["final_decision"]: row["count"] for row in review_rows})
-            resolved = sum(outcomes.values())
-            result["review_outcomes"] = {
-                "resolved": resolved,
-                "operator_pass": outcomes[Decision.PASS.value],
-                "operator_reject": outcomes[Decision.REJECT.value],
-                "confirmed_defect_rate": outcomes[Decision.REJECT.value] / resolved if resolved else 0.0,
-            }
-            all_records = connection.execute(
-                "SELECT record_json FROM inspections WHERE review_status = 'RESOLVED'"
-            ).fetchall()
             result["review_queue_depth"] = connection.execute(
                 "SELECT COUNT(*) AS count FROM inspections WHERE review_status = 'PENDING'"
             ).fetchone()["count"]
@@ -201,15 +233,6 @@ class SqliteInspectionRepository:
             result["oldest_pending_review_minutes"] = (
                 round(oldest_pending_minutes, 1) if oldest_pending_minutes is not None else None
             )
-        review_reasons: Counter[str] = Counter()
-        for row in all_records:
-            record = InspectionRecord.model_validate_json(row["record_json"])
-            code = record.review.reason_code.value if record.review and record.review.reason_code else "LEGACY_UNCLASSIFIED"
-            review_reasons[code] += 1
-        result["review_reason_counts"] = [
-            {"reason_code": reason, "count": count}
-            for reason, count in review_reasons.most_common()
-        ]
         return result
 
     def list_recent(self, limit: int = 50) -> list[InspectionRecord]:

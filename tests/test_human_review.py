@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -16,10 +16,11 @@ def pending_record() -> InspectionRecord:
 def review(
     decision: Decision = Decision.REJECT,
     reason_code: ReviewReasonCode | None = None,
+    reviewed_at: datetime | None = None,
 ) -> ReviewResolution:
     return ReviewResolution(reviewer_id="operator-7", final_decision=decision,
                             reason="Review decision recorded with evidence.",
-                            reviewed_at=datetime.now(timezone.utc).isoformat(),
+                            reviewed_at=(reviewed_at or datetime.now(timezone.utc)).isoformat(),
                             reason_code=reason_code)
 
 
@@ -63,7 +64,8 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
     )
 
     summary = repository.dashboard_summary()
-    outcomes = summary["review_outcomes"]
+    period_summary = summary["windows"]["24h"]
+    outcomes = period_summary["review_outcomes"]
 
     assert summary["review_queue_depth"] == 1
     assert summary["oldest_pending_review_minutes"] is not None
@@ -74,7 +76,7 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
         "confirmed_defect_rate": 0.5,
     }
     assert {
-        item["reason_code"]: item["count"] for item in summary["review_reason_counts"]
+        item["reason_code"]: item["count"] for item in period_summary["review_reason_counts"]
     } == {
         "ACCEPTED_PROCESS_RESIDUE": 1,
         "TRUE_DEFECT_CONFIRMED": 1,
@@ -84,3 +86,39 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
 def test_review_reason_code_requires_its_matching_disposition():
     with pytest.raises(ValueError, match="requires final decision REJECT"):
         review(Decision.PASS, ReviewReasonCode.TRUE_DEFECT_CONFIRMED)
+
+
+def test_dashboard_review_outcomes_use_review_time_not_inspection_time(tmp_path):
+    repository = SqliteInspectionRepository(str(tmp_path / "inspections.db"))
+    for inspection_id in ("old-review", "recent-review"):
+        repository.save(
+            InspectionRecord(
+                inspection_id=inspection_id,
+                part_id=inspection_id,
+                image_uri="image.png",
+                decision=Decision.INSPECT,
+                review_status=ReviewStatus.PENDING,
+            )
+        )
+    repository.resolve_review(
+        "old-review",
+        review(
+            Decision.PASS,
+            ReviewReasonCode.ACCEPTED_PROCESS_RESIDUE,
+            datetime.now(timezone.utc) - timedelta(days=8),
+        ),
+    )
+    repository.resolve_review(
+        "recent-review",
+        review(
+            Decision.REJECT,
+            ReviewReasonCode.TRUE_DEFECT_CONFIRMED,
+        ),
+    )
+
+    summary = repository.dashboard_summary()
+
+    assert summary["windows"]["24h"]["review_outcomes"]["resolved"] == 1
+    assert summary["windows"]["7d"]["review_outcomes"]["resolved"] == 1
+    assert summary["windows"]["30d"]["review_outcomes"]["resolved"] == 2
+    assert summary["windows"]["all"]["review_outcomes"]["resolved"] == 2

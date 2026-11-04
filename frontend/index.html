@@ -51,7 +51,7 @@
   <section class="view" id="dashboard-view" hidden>
     <section class="metrics" id="decision-metrics"></section>
     <div class="grid dashboard-grid" style="margin-top:18px">
-      <section class="panel"><div class="head"><h2>Human-review outcomes</h2><small>All resolved INSPECT cases</small></div><div class="metrics" id="review-metrics"></div><div class="note">These lifetime review outcomes update only when an operator resolves an INSPECT case. They are not model accuracy, but show whether the review band is useful.</div><div class="head" style="margin-top:16px"><h3>Review disposition mix</h3><small>Why an operator decided</small></div><div class="list" id="review-reasons"><div class="empty">No resolved reviews yet.</div></div></section>
+      <section class="panel"><div class="head"><h2>Human-review outcomes</h2><small>Selected time period</small></div><div class="metrics" id="review-metrics"></div><div class="note">These outcomes use the time at which an operator resolved the review. They are not model accuracy, but show whether the review band is useful.</div><div class="head" style="margin-top:16px"><h3>Review disposition mix</h3><small>Why an operator decided</small></div><div class="list" id="review-reasons"><div class="empty">No resolved reviews yet.</div></div></section>
       <section class="panel"><div class="head"><h2>Top policy reasons</h2><small>Last 24 hours</small></div><div class="list" id="reasons"><div class="empty">No operational data yet.</div></div></section>
     </div>
     <div class="grid dashboard-grid" style="margin-top:18px">
@@ -91,14 +91,14 @@
     const image=`<div class="image"><img src="${fileUrl(record.image_uri)}" alt="Original grid capture"><small>Original camera capture</small></div>`;
     const refs=(record.procedure_references||[]).map(item=>`<span class="tag">${esc(item.document_id)} · ${esc(item.section)}</span>`).join('');
     const explain=explanation?`<section class="explain"><h3>Procedure-grounded explanation</h3><div class="tiny">${esc(explanation.source)}${explanation.fallback_reason?` · fallback ${esc(explanation.fallback_reason)}`:''}</div><div>${esc(explanation.summary)}</div>${explanation.operator_actions?.length?`<b>Operator actions</b><ul>${explanation.operator_actions.map(action=>`<li>${esc(action)}</li>`).join('')}</ul>`:''}${refs?`<div class="refs">${refs}</div>`:''}</section>`:'';
-    const review=`<section class="review"><b>Human disposition required</b><label>Reviewer ID<input id="reviewer" placeholder="operator ID"></label><label>Disposition type<select id="reason-code"><option value="NO_DEFECT_FOUND">No defect found — PASS</option><option value="ACCEPTED_PROCESS_RESIDUE">Accepted process residue — PASS</option><option value="ACCEPTABLE_VARIATION">Acceptable variation — PASS</option><option value="CAPTURE_ARTIFACT">Capture artifact — PASS</option><option value="POLICY_EXCEPTION">Policy exception — PASS</option><option value="TRUE_DEFECT_CONFIRMED">Confirmed quality defect — REJECT</option></select></label><label>Reason<textarea id="reason" rows="3" placeholder="Evidence-based final disposition"></textarea></label><div class="actions"><button class="secondary" onclick="resolveReview('PASS')">Approve PASS</button><button class="danger" onclick="resolveReview('REJECT')">Confirm REJECT</button></div></section>`;
+    const review=`<section class="review"><b>Human disposition required</b><label>Reviewer ID<input id="reviewer" placeholder="operator ID"></label><label>Disposition type<select id="reason-code"><option value="NO_DEFECT_FOUND">No defect found — PASS</option><option value="ACCEPTED_PROCESS_RESIDUE">Accepted process residue — PASS</option><option value="ACCEPTABLE_VARIATION">Acceptable variation — PASS</option><option value="CAPTURE_ARTIFACT">Capture artifact — PASS</option><option value="POLICY_EXCEPTION">Policy exception — PASS</option><option value="TRUE_DEFECT_CONFIRMED">Confirmed quality defect — REJECT</option></select></label><label>Reason<textarea id="reason" rows="3" placeholder="Evidence-based final disposition"></textarea></label><div class="actions"><button onclick="resolveReview()">Save disposition</button></div></section>`;
     $('#detail').className='';
     $('#detail').innerHTML=`<div class="detail"><div>${image}</div><div class="details">${badge(record.decision)}<div class="score">${score(evidence.score)}</div><div class="kv"><b>Station:</b> ${esc(c.station_id||'manual')}<br><b>Camera:</b> ${esc(c.camera_id||'manual')}<br><b>Frame:</b> ${esc(c.frame_id||'not supplied')}<br><b>Model:</b> ${esc(evidence.model_version||'not recorded')}<br><b>Coverage:</b> ${percent(evidence.valid_coverage)}</div><div class="code">${(policy.reason_codes||[]).map(esc).join(' · ')||'No policy reasons recorded'}</div>${explain}${review}</div></div>`;
   }
 
   function renderDashboard() {
     if(!dashboard) return;
-    const window=dashboard.windows?.[period]||{}, counts=window.decision_counts||{}, outcomes=dashboard.review_outcomes||{};
+    const window=dashboard.windows?.[period]||{}, counts=window.decision_counts||{}, outcomes=window.review_outcomes||{};
     $('#decision-metrics').innerHTML=[
       metric('Inspections',window.total??0,{ '24h':'Last 24 hours', '7d':'Last 7 days', '30d':'Last 30 days', all:'All time' }[period]),
       metric('Auto pass',counts.PASS??0,'Released without review'),
@@ -108,26 +108,25 @@
       metric('Review holds',counts.INSPECT??0,'Initially sent to human review'),
     ].join('');
     $('#review-metrics').innerHTML=[
-      metric('Resolved',outcomes.resolved??0,'All human-reviewed cases'),
+      metric('Resolved',outcomes.resolved??0,'Human-reviewed in this period'),
       metric('Operator clears',outcomes.operator_pass??0,'INSPECT → PASS'),
       metric('Operator confirms',outcomes.operator_reject??0,'INSPECT → REJECT'),
-      metric('Confirmed defect rate',percent(outcomes.confirmed_defect_rate),'Lifetime resolved INSPECT cases'),
+      metric('Confirmed defect rate',percent(outcomes.confirmed_defect_rate),'Resolved INSPECT cases in this period'),
     ].join('');
     const reasons=window.top_policy_reasons||[];
     $('#reasons').innerHTML=reasons.length?reasons.map(reason=>`<div class="reason"><span>${esc(reason.reason_code)}</span><b>${reason.count}</b></div>`).join(''):'<div class="empty">No operational data yet.</div>';
-    const reviewReasons=dashboard.review_reason_counts||[];
+    const reviewReasons=window.review_reason_counts||[];
     $('#review-reasons').innerHTML=reviewReasons.length?reviewReasons.map(reason=>`<div class="reason"><span>${esc(reviewReasonLabels[reason.reason_code]||reason.reason_code)}</span><b>${reason.count}</b></div>`).join(''):'<div class="empty">No resolved reviews yet.</div>';
     const completed=rows.filter(record=>record.decision!=='INSPECT'||record.review_status==='RESOLVED').slice(0,12);
     $('#recent-decisions').innerHTML=completed.length?completed.map(decisionEvent).join(''):'<div class="empty">No completed decisions yet.</div>';
   }
 
   function pick(id) { const record=rows.find(item=>item.inspection_id===id); if(record){renderDetail(record);renderQueue();} }
-  async function resolveReview(finalDecision) {
+  async function resolveReview() {
     if (reviewSubmitting) return;
     const reviewer=$('#reviewer').value.trim(), reason=$('#reason').value.trim(), reasonCode=$('#reason-code').value;
     if(!reviewer||reason.length<3) return alert('Reviewer ID and a reason are required.');
-    const expectedDecision=reasonCode==='TRUE_DEFECT_CONFIRMED'?'REJECT':'PASS';
-    if(finalDecision!==expectedDecision) return alert(`This disposition type requires ${expectedDecision}.`);
+    const finalDecision=reasonCode==='TRUE_DEFECT_CONFIRMED'?'REJECT':'PASS';
     reviewSubmitting=true;
     document.querySelectorAll('#detail .actions button').forEach(button=>button.disabled=true);
     try {
