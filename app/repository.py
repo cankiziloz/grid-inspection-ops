@@ -173,6 +173,8 @@ class SqliteInspectionRepository:
                 counts.update({row["decision"]: row["count"] for row in rows})
                 total = sum(counts.values())
                 policy_reasons: Counter[str] = Counter()
+                final_counts = {Decision.PASS.value: 0, Decision.REJECT.value: 0}
+                pending_reviews = 0
                 record_rows = connection.execute(
                     f"SELECT record_json FROM inspections {where}",
                     parameters,
@@ -182,6 +184,11 @@ class SqliteInspectionRepository:
                     policy_reasons.update(
                         record.metadata.get("critical_policy", {}).get("reason_codes", [])
                     )
+                    if record.final_decision in {Decision.PASS, Decision.REJECT}:
+                        final_counts[record.final_decision.value] += 1
+                    elif record.review_status is ReviewStatus.PENDING:
+                        pending_reviews += 1
+                completed = sum(final_counts.values())
                 reviewed_records = [
                     record
                     for record in resolved_records
@@ -208,6 +215,14 @@ class SqliteInspectionRepository:
                     "decision_counts": counts,
                     "attention_rate": (counts["INSPECT"] + counts["REJECT"]) / total if total else 0.0,
                     "reject_rate": counts["REJECT"] / total if total else 0.0,
+                    "final_disposition": {
+                        "completed": completed,
+                        "pass": final_counts[Decision.PASS.value],
+                        "reject": final_counts[Decision.REJECT.value],
+                        "pending": pending_reviews,
+                        "pass_rate": final_counts[Decision.PASS.value] / completed if completed else 0.0,
+                        "reject_rate": final_counts[Decision.REJECT.value] / completed if completed else 0.0,
+                    },
                     "review_outcomes": {
                         "resolved": resolved,
                         "operator_pass": review_outcomes[Decision.PASS.value],

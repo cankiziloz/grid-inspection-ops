@@ -69,6 +69,14 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
 
     assert summary["review_queue_depth"] == 1
     assert summary["oldest_pending_review_minutes"] is not None
+    assert period_summary["final_disposition"] == {
+        "completed": 2,
+        "pass": 1,
+        "reject": 1,
+        "pending": 1,
+        "pass_rate": 0.5,
+        "reject_rate": 0.5,
+    }
     assert outcomes == {
         "resolved": 2,
         "operator_pass": 1,

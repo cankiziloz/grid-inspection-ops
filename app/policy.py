@@ -50,8 +50,8 @@ def checklist_for(decision: Decision, evidence: VisionEvidence) -> list[str]:
     if decision is Decision.INSPECT:
         return [
             "Confirm the original image is sharp and the full grid area is visible.",
-            "Review the anomaly-mask overlay and each highlighted region.",
-            "Confirm whether the marked pattern is a real grid defect or a lighting/capture artifact.",
+            "Review the original capture and the recorded policy reasons.",
+            "Confirm whether the pattern is a real grid defect or a lighting/capture artifact.",
             "Record final disposition and a reason code for future calibration.",
         ]
     if decision is Decision.REJECT:
