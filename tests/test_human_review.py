@@ -53,7 +53,7 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
     repository.resolve_review("review-reject", review(Decision.REJECT))
 
     summary = repository.dashboard_summary()
-    outcomes = summary["windows"]["24h"]["review_outcomes"]
+    outcomes = summary["review_outcomes"]
 
     assert summary["review_queue_depth"] == 1
     assert summary["oldest_pending_review_minutes"] is not None

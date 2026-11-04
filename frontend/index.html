@@ -49,7 +49,7 @@
   <section class="view" id="dashboard-view" hidden>
     <section class="metrics" id="decision-metrics"></section>
     <div class="grid dashboard-grid" style="margin-top:18px">
-      <section class="panel"><div class="head"><h2>Human-review outcomes</h2><small>Only initially INSPECT cases</small></div><div class="metrics" id="review-metrics"></div><div class="note">“Operator clears” and “operator confirms” are review outcomes, not model accuracy. They reveal whether the review band is useful and whether queue volume is becoming operationally risky.</div></section>
+      <section class="panel"><div class="head"><h2>Human-review outcomes</h2><small>All resolved INSPECT cases</small></div><div class="metrics" id="review-metrics"></div><div class="note">These lifetime review outcomes update only when an operator resolves an INSPECT case. They are not model accuracy, but show whether the review band is useful.</div></section>
       <section class="panel"><div class="head"><h2>Top policy reasons</h2><small>Last 24 hours</small></div><div class="list" id="reasons"><div class="empty">No operational data yet.</div></div></section>
     </div>
     <div class="grid dashboard-grid" style="margin-top:18px">
@@ -95,7 +95,7 @@
 
   function renderDashboard() {
     if(!dashboard) return;
-    const window=dashboard.windows?.[period]||{}, counts=window.decision_counts||{}, outcomes=window.review_outcomes||{};
+    const window=dashboard.windows?.[period]||{}, counts=window.decision_counts||{}, outcomes=dashboard.review_outcomes||{};
     $('#decision-metrics').innerHTML=[
       metric('Inspections',window.total??0,period==='1h'?'Last hour':'Last 24 hours'),
       metric('Auto pass',counts.PASS??0,'Released without review'),
@@ -105,10 +105,10 @@
       metric('Review holds',counts.INSPECT??0,'Initially sent to human review'),
     ].join('');
     $('#review-metrics').innerHTML=[
-      metric('Resolved',outcomes.resolved??0,'Human-reviewed in this window'),
+      metric('Resolved',outcomes.resolved??0,'All human-reviewed cases'),
       metric('Operator clears',outcomes.operator_pass??0,'INSPECT → PASS'),
       metric('Operator confirms',outcomes.operator_reject??0,'INSPECT → REJECT'),
-      metric('Confirmed defect rate',percent(outcomes.confirmed_defect_rate),'Among resolved INSPECT cases'),
+      metric('Confirmed defect rate',percent(outcomes.confirmed_defect_rate),'Lifetime resolved INSPECT cases'),
     ].join('');
     const reasons=dashboard.top_policy_reasons_24h||[];
     $('#reasons').innerHTML=reasons.length?reasons.map(reason=>`<div class="reason"><span>${esc(reason.reason_code)}</span><b>${reason.count}</b></div>`).join(''):'<div class="empty">No operational data yet.</div>';
