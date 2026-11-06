@@ -81,11 +81,12 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
         "resolved": 2,
         "operator_pass": 1,
         "operator_reject": 1,
-        "confirmed_defect_rate": 0.5,
+        "review_pass_rate": 0.5,
+        "review_reject_rate": 0.5,
         "no_defect_found": 0,
-        "strict_false_positive_rate": 0.0,
+        "no_defect_found_rate": 0.0,
         "accepted_minor_defect": 0,
-        "defect_observed_rate": 0.5,
+        "accepted_minor_defect_rate": 0.0,
     }
     assert {
         item["reason_code"]: item["count"] for item in period_summary["review_reason_counts"]
@@ -161,5 +162,5 @@ def test_dashboard_separates_no_defect_from_minor_defect_accepted(tmp_path):
 
     assert outcomes["no_defect_found"] == 1
     assert outcomes["accepted_minor_defect"] == 1
-    assert outcomes["strict_false_positive_rate"] == 0.5
-    assert outcomes["defect_observed_rate"] == 0.5
+    assert outcomes["no_defect_found_rate"] == 0.5
+    assert outcomes["accepted_minor_defect_rate"] == 0.5

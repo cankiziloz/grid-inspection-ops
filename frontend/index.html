@@ -52,7 +52,7 @@
     <section class="metrics" id="decision-metrics"></section>
     <section class="panel" style="margin-top:18px"><div class="head"><h2>Production dispositions</h2><small>Final PASS/REJECT outcomes in the selected period</small></div><div class="metrics" id="final-metrics"></div></section>
     <div class="grid dashboard-grid" style="margin-top:18px">
-      <section class="panel"><div class="head"><h2>Review-band defect confirmation</h2><small>Only initially INSPECT cases</small></div><div class="metrics" id="review-metrics"></div><div class="note">This excludes automatic PASS and REJECT decisions. It measures how often human-reviewed uncertainty cases become confirmed quality defects; it is not overall model accuracy.</div><div class="head" style="margin-top:16px"><h3>Review disposition mix</h3><small>Why an operator decided</small></div><div class="list" id="review-reasons"><div class="empty">No resolved reviews yet.</div></div></section>
+      <section class="panel"><div class="head"><h2>Review outcomes</h2><small>Only initially INSPECT cases</small></div><div class="metrics" id="review-metrics"></div><div class="note">Every percentage uses the same denominator: resolved INSPECT cases in the selected period. “No defect found” is the strict false-positive signal for the model.</div><div class="head" style="margin-top:16px"><h3>Review disposition mix</h3><small>Why an operator decided</small></div><div class="list" id="review-reasons"><div class="empty">No resolved reviews yet.</div></div></section>
       <section class="panel"><div class="head"><h2>Top policy reasons</h2><small>Last 24 hours</small></div><div class="list" id="reasons"><div class="empty">No operational data yet.</div></div></section>
     </div>
     <div class="grid dashboard-grid" style="margin-top:18px">
@@ -130,10 +130,10 @@
     ].join('');
     $('#review-metrics').innerHTML=[
       metric('Resolved',outcomes.resolved??0,'Human-reviewed in this period'),
-      metric('No defect found',outcomes.no_defect_found??0,`Strict false-positive rate ${percent(outcomes.strict_false_positive_rate)}`),
-      metric('Minor defect released',outcomes.accepted_minor_defect??0,'Defect present, quality PASS'),
-      metric('Confirmed quality defect',outcomes.operator_reject??0,`Reject confirmation ${percent(outcomes.confirmed_defect_rate)}`),
-      metric('Defect observed rate',percent(outcomes.defect_observed_rate),'Confirmed or minor accepted defect'),
+      metric('PASS after review',outcomes.operator_pass??0,`Rate ${percent(outcomes.review_pass_rate)}`),
+      metric('REJECT after review',outcomes.operator_reject??0,`Rate ${percent(outcomes.review_reject_rate)}`),
+      metric('PASS — no defect',outcomes.no_defect_found??0,`Rate ${percent(outcomes.no_defect_found_rate)}`),
+      metric('PASS — minor defect',outcomes.accepted_minor_defect??0,`Rate ${percent(outcomes.accepted_minor_defect_rate)}`),
     ].join('');
     const reasons=window.top_policy_reasons||[];
     $('#reasons').innerHTML=reasons.length?reasons.map(reason=>`<div class="reason"><span>${esc(reason.reason_code)}</span><b>${reason.count}</b></div>`).join(''):'<div class="empty">No operational data yet.</div>';

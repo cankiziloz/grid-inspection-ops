@@ -233,13 +233,12 @@ class SqliteInspectionRepository:
                         "resolved": resolved,
                         "operator_pass": review_outcomes[Decision.PASS.value],
                         "operator_reject": review_outcomes[Decision.REJECT.value],
-                        "confirmed_defect_rate": review_outcomes[Decision.REJECT.value] / resolved if resolved else 0.0,
+                        "review_pass_rate": review_outcomes[Decision.PASS.value] / resolved if resolved else 0.0,
+                        "review_reject_rate": review_outcomes[Decision.REJECT.value] / resolved if resolved else 0.0,
                         "no_defect_found": no_defect_found,
-                        "strict_false_positive_rate": no_defect_found / resolved if resolved else 0.0,
+                        "no_defect_found_rate": no_defect_found / resolved if resolved else 0.0,
                         "accepted_minor_defect": accepted_minor_defect,
-                        "defect_observed_rate": (
-                            review_outcomes[Decision.REJECT.value] + accepted_minor_defect
-                        ) / resolved if resolved else 0.0,
+                        "accepted_minor_defect_rate": accepted_minor_defect / resolved if resolved else 0.0,
                     },
                     "review_reason_counts": [
                         {"reason_code": reason, "count": count}
