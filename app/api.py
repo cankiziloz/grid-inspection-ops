@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .briefing import OllamaOperationsBriefing, SafeTemplateOperationsBriefing
 from .domain import CaptureMetadata, Decision, ReviewReasonCode, ReviewResolution
 from .explain import OllamaProcedureExplainer, SafeTemplateExplainer
 from .graph import build_inspection_graph
@@ -75,6 +76,22 @@ def runtime():
             explainer = SafeTemplateExplainer()
         app.state.graph = build_inspection_graph(vision, repository, explainer, retriever)
     return app.state.graph, app.state.repository
+
+
+def operations_briefing_generator():
+    """Build the optional briefing narrator separately from inspection runtime."""
+    provider = os.getenv("OPERATIONS_BRIEFING_PROVIDER", "template").lower()
+    if provider == "template":
+        return SafeTemplateOperationsBriefing()
+    if provider == "ollama":
+        return OllamaOperationsBriefing(
+            model=os.getenv(
+                "OPERATIONS_BRIEFING_OLLAMA_MODEL",
+                os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b"),
+            ),
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+        )
+    raise RuntimeError("OPERATIONS_BRIEFING_PROVIDER must be 'template' or 'ollama'")
 
 
 @app.get("/healthz")
@@ -202,3 +219,17 @@ def operations_briefing_snapshot(
         period,
         docs_dir=Path(__file__).parent.parent / "docs",
     )
+
+
+@app.get("/v1/operations/briefing")
+def operations_briefing(
+    period: Literal["24h", "7d", "30d", "all"] = "24h",
+):
+    """Narrate a bounded snapshot; this cannot affect inspection decisions."""
+    _, repository = runtime()
+    snapshot = build_operations_briefing_snapshot(
+        repository.dashboard_summary(),
+        period,
+        docs_dir=Path(__file__).parent.parent / "docs",
+    )
+    return operations_briefing_generator().generate(snapshot)

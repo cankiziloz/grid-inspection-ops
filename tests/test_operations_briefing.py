@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import api
+from app.briefing import SafeTemplateOperationsBriefing
 from app.operations_briefing import build_operations_briefing_snapshot
 
 
@@ -108,3 +109,19 @@ def test_briefing_snapshot_endpoint_uses_deterministic_repository_data(monkeypat
     assert payload["incoming_activity"]["total"] == 12
     assert payload["latency"]["end_to_end"]["p95_ms"] == 300.0
     assert payload["sop_evidence"]
+
+
+def test_briefing_endpoint_returns_a_template_when_no_llm_is_enabled(monkeypatch):
+    class Repository:
+        def dashboard_summary(self) -> dict:
+            return dashboard_summary()
+
+    monkeypatch.setattr(api, "runtime", lambda: (None, Repository()))
+    monkeypatch.setattr(api, "operations_briefing_generator", SafeTemplateOperationsBriefing)
+
+    response = TestClient(api.app).get("/v1/operations/briefing?period=24h")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "template"
+    assert payload["priority_actions"][0]["reason_codes"] == ["LOW_VALID_COVERAGE"]
