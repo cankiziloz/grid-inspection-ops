@@ -45,6 +45,21 @@ The dashboard refreshes every 10 seconds and shows 24-hour, 7-day, 30-day, or
 all-time inspection activity; review outcomes; open review backlog; policy
 reason codes; and latency p50/p95 measurements.
 
+## V2 demo feedback seed
+
+V2 starts with an auditable case-memory corpus, not an automatic decision
+override. To mark only pending **demo** glue INSPECT records as human-accepted
+process residue, run:
+
+```bash
+python scripts/seed_v2_glue_residue_feedback.py
+```
+
+The script records `PASS + ACCEPTED_PROCESS_RESIDUE`, adds a `glue` case-memory
+annotation, and writes an audit event. It never changes a non-demo record, an
+automatic PASS/REJECT result, or an existing human resolution; rerunning it is
+safe.
+
 ## Operations briefing snapshot
 
 The optional Operations Briefing is built in stages. Its first stage is a
