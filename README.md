@@ -41,9 +41,23 @@ Open the dashboard at `http://localhost:8080` (or `http://127.0.0.1:8080`).
 The API accepts both local origins by default; override them for a deployed UI
 with the comma-separated `CORS_ORIGINS` environment variable.
 
-The dashboard refreshes every 10 seconds and shows the last-hour/last-24-hour
-inspection counts, attention and reject rates, open review backlog, leading
-policy reason codes, the live feed, and evidence for a selected record.
+The dashboard refreshes every 10 seconds and shows 24-hour, 7-day, 30-day, or
+all-time inspection activity; review outcomes; open review backlog; policy
+reason codes; and latency p50/p95 measurements.
+
+## Operations briefing snapshot
+
+The optional Operations Briefing is built in stages. Its first stage is a
+deterministic, typed snapshot—not an LLM response. It packages the selected
+dashboard period's activity, review outcomes, queue, policy reasons, review
+dispositions, and latency metrics for a later constrained generator.
+
+```bash
+curl "http://127.0.0.1:8000/v1/operations/briefing-snapshot?period=24h"
+```
+
+Supported periods are `24h`, `7d`, `30d`, and `all`. The snapshot endpoint
+does not call Ollama and cannot change any inspection decision.
 
 ## Retrieval-augmented procedures
 

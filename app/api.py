@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ from .domain import CaptureMetadata, Decision, ReviewReasonCode, ReviewResolutio
 from .explain import OllamaProcedureExplainer, SafeTemplateExplainer
 from .graph import build_inspection_graph
 from .model_artifacts import download_grid_model
+from .operations_briefing import build_operations_briefing_snapshot
 from .pinecone_rag import PineconeSopRetriever
 from .rag import SopRetriever
 from .repository import SqliteInspectionRepository
@@ -187,3 +189,12 @@ def resolve_review(inspection_id: str, request: ReviewRequest):
 def dashboard():
     _, repository = runtime()
     return repository.dashboard_summary()
+
+
+@app.get("/v1/operations/briefing-snapshot")
+def operations_briefing_snapshot(
+    period: Literal["24h", "7d", "30d", "all"] = "24h",
+):
+    """LLM-free, typed evidence package for a future operations briefing."""
+    _, repository = runtime()
+    return build_operations_briefing_snapshot(repository.dashboard_summary(), period)
