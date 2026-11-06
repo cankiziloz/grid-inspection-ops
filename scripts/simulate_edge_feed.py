@@ -26,13 +26,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--camera-id", default="demo-line-2-camera-1")
     parser.add_argument("--max-events", type=int, default=0, help="0 runs continuously")
     parser.add_argument("--seed", type=int, default=None, help="Use a seed only when reproducing a demo sequence")
+    parser.add_argument(
+        "--include-cases",
+        default="",
+        help="Comma-separated folder names to send, for example glue,thread",
+    )
     return parser.parse_args()
 
 
-def discover_images(dataset_root: Path) -> list[Path]:
+def discover_images(dataset_root: Path, include_cases: set[str] | None = None) -> list[Path]:
     images = [path for path in dataset_root.rglob("*") if path.suffix.lower() in {".png", ".jpg", ".jpeg"}]
+    if include_cases:
+        images = [path for path in images if path.parent.name.lower() in include_cases]
     if not images:
-        raise ValueError(f"No PNG/JPEG files found below {dataset_root}")
+        suffix = f" for cases {', '.join(sorted(include_cases))}" if include_cases else ""
+        raise ValueError(f"No PNG/JPEG files found below {dataset_root}{suffix}")
     return images
 
 
@@ -76,10 +84,15 @@ def main() -> None:
     if args.interval_seconds <= 0:
         raise ValueError("--interval-seconds must be greater than zero")
     randomizer = random.Random(args.seed)
-    images = discover_images(args.dataset_root)
+    include_cases = {item.strip().lower() for item in args.include_cases.split(",") if item.strip()}
+    images = discover_images(args.dataset_root, include_cases or None)
     sent = 0
     queue: list[Path] = []
-    print(f"Loaded {len(images)} images; sending a shuffled edge feed every {args.interval_seconds:g}s.")
+    case_label = f" for cases {', '.join(sorted(include_cases))}" if include_cases else ""
+    print(
+        f"Loaded {len(images)} images{case_label}; "
+        f"sending a shuffled edge feed every {args.interval_seconds:g}s."
+    )
 
     while args.max_events == 0 or sent < args.max_events:
         if not queue:

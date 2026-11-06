@@ -28,6 +28,21 @@ finite demo. Each frame has a unique `frame_id`; the `/v1/edge/inspections`
 endpoint validates the image SHA-256 and returns the original result on a
 duplicate frame instead of creating another inspection.
 
+To send only selected test folders into the review workflow, use
+`--include-cases`. For example, to send shuffled glue and thread images only:
+
+```bash
+python scripts/simulate_edge_feed.py \
+  --dataset-root /absolute/path/to/data/grid/test \
+  --include-cases glue,thread \
+  --interval-seconds 5 \
+  --max-events 20
+```
+
+The filter controls only which demo images enter the API. It does not alter a
+model decision: only cases that the policy returns as `INSPECT` appear in the
+human review queue.
+
 Run the API and dashboard in separate terminals, then start the simulator in a
 third terminal:
 
