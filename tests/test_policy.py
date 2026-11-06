@@ -52,3 +52,13 @@ def test_decision_is_monotonic_for_valid_evidence():
     rank = {Decision.PASS: 0, Decision.INSPECT: 1, Decision.REJECT: 2}
     decisions = [rank[decide(evidence(score))] for score in (0.0, 0.249, 0.25, 0.39, 0.4, 0.8)]
     assert decisions == sorted(decisions)
+
+
+def test_low_coverage_blocks_auto_reject_without_hiding_anomaly_signal():
+    outcome = evaluate(evidence(0.80, coverage=0.90))
+
+    assert outcome.decision is Decision.INSPECT
+    assert outcome.reason_codes == (
+        "LOW_VALID_COVERAGE",
+        "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD",
+    )

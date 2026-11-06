@@ -18,21 +18,37 @@ MIN_VALID_COVERAGE = 0.98
 
 def evaluate(evidence: VisionEvidence) -> PolicyOutcome:
     """Fail closed: unknown, unverified, or low-quality inputs never PASS."""
+    gates: list[str] = []
     if not evidence.artifact_verified:
-        return PolicyOutcome(Decision.INSPECT, ("ARTIFACT_NOT_VERIFIED",))
+        gates.append("ARTIFACT_NOT_VERIFIED")
     if not math.isfinite(evidence.score):
-        return PolicyOutcome(Decision.INSPECT, ("NON_FINITE_ANOMALY_SCORE",))
+        gates.append("NON_FINITE_ANOMALY_SCORE")
     if evidence.review_threshold > evidence.reject_threshold:
-        return PolicyOutcome(Decision.INSPECT, ("INVALID_THRESHOLD_ORDER",))
+        gates.append("INVALID_THRESHOLD_ORDER")
     if evidence.quality is None:
-        return PolicyOutcome(Decision.INSPECT, ("MISSING_IMAGE_QUALITY",))
-    if not evidence.quality.acceptable:
-        return PolicyOutcome(Decision.INSPECT, tuple(evidence.quality.failure_reasons) or ("IMAGE_QUALITY_GATE",))
+        gates.append("MISSING_IMAGE_QUALITY")
+    elif not evidence.quality.acceptable:
+        gates.extend(evidence.quality.failure_reasons or ["IMAGE_QUALITY_GATE"])
     if evidence.valid_coverage < MIN_VALID_COVERAGE:
-        return PolicyOutcome(Decision.INSPECT, ("LOW_VALID_COVERAGE",))
-    if evidence.score >= evidence.reject_threshold:
+        gates.append("LOW_VALID_COVERAGE")
+
+    score_reason: str | None = None
+    if math.isfinite(evidence.score) and evidence.review_threshold <= evidence.reject_threshold:
+        if evidence.score >= evidence.reject_threshold:
+            score_reason = "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD"
+        elif evidence.score >= evidence.review_threshold:
+            score_reason = "SCORE_IN_REVIEW_BAND"
+
+    # A failed safety gate takes precedence over automatic pass/reject, but it
+    # must not hide an independent anomaly signal from the operator or audit log.
+    if gates:
+        return PolicyOutcome(
+            Decision.INSPECT,
+            tuple(gates + ([score_reason] if score_reason else [])),
+        )
+    if score_reason == "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD":
         return PolicyOutcome(Decision.REJECT, ("SCORE_AT_OR_ABOVE_REJECT_THRESHOLD",))
-    if evidence.score >= evidence.review_threshold:
+    if score_reason == "SCORE_IN_REVIEW_BAND":
         return PolicyOutcome(Decision.INSPECT, ("SCORE_IN_REVIEW_BAND",))
     return PolicyOutcome(Decision.PASS, ("ALL_CRITICAL_GATES_PASSED",))
 
