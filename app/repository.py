@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -297,42 +296,6 @@ class SqliteInspectionRepository:
                 "SELECT record_json FROM inspections ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [InspectionRecord.model_validate_json(row["record_json"]) for row in rows]
-
-    def list_by_part_prefix(self, prefix: str, limit: int = 500) -> list[InspectionRecord]:
-        """Return a bounded set of records for an explicit, operationally-scoped prefix."""
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT record_json FROM inspections WHERE part_id LIKE ? "
-                "ORDER BY created_at DESC LIMIT ?",
-                (f"{prefix}%", limit),
-            ).fetchall()
-        return [InspectionRecord.model_validate_json(row["record_json"]) for row in rows]
-
-    def annotate_case_memory(self, inspection_id: str, annotation: dict) -> InspectionRecord:
-        """Attach non-authoritative V2 retrieval metadata to a resolved review."""
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT record_json FROM inspections WHERE inspection_id = ?", (inspection_id,)
-            ).fetchone()
-            if not row:
-                raise KeyError(inspection_id)
-            record = InspectionRecord.model_validate_json(row["record_json"])
-            if record.review_status is not ReviewStatus.RESOLVED:
-                raise ValueError("Case-memory metadata requires a resolved human review.")
-            if record.metadata.get("case_memory") == annotation:
-                return record
-            updated = record.model_copy(
-                update={"metadata": {**record.metadata, "case_memory": annotation}}
-            )
-            connection.execute(
-                "UPDATE inspections SET record_json = ? WHERE inspection_id = ?",
-                (updated.model_dump_json(), inspection_id),
-            )
-            connection.execute(
-                "INSERT INTO audit_events (inspection_id, event_type, payload_json) VALUES (?, ?, ?)",
-                (inspection_id, "CASE_MEMORY_ANNOTATED", json.dumps(annotation)),
-            )
-        return updated
 
     def resolve_review(self, inspection_id: str, review: ReviewResolution) -> InspectionRecord:
         if review.final_decision not in {Decision.PASS, Decision.REJECT}:
