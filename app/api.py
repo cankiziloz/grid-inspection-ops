@@ -197,4 +197,8 @@ def operations_briefing_snapshot(
 ):
     """LLM-free, typed evidence package for a future operations briefing."""
     _, repository = runtime()
-    return build_operations_briefing_snapshot(repository.dashboard_summary(), period)
+    return build_operations_briefing_snapshot(
+        repository.dashboard_summary(),
+        period,
+        docs_dir=Path(__file__).parent.parent / "docs",
+    )

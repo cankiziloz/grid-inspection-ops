@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .procedure_routing import POLICY_SECTION_ROUTES
+from .rag import load_procedure_chunks
 
 BriefingPeriod = Literal["24h", "7d", "30d", "all"]
 
@@ -62,6 +65,15 @@ class ReviewQueueSnapshot(BaseModel):
     oldest_pending_minutes: float | None = Field(default=None, ge=0)
 
 
+class SopEvidenceSnapshot(BaseModel):
+    document_id: str
+    title: str
+    section: str
+    excerpt: str
+    source_reason_codes: list[str]
+    related_event_count: int = Field(ge=0)
+
+
 class OperationsBriefingSnapshot(BaseModel):
     schema_version: Literal["operations-briefing-snapshot-v1"]
     source: Literal["deterministic-dashboard"]
@@ -74,6 +86,40 @@ class OperationsBriefingSnapshot(BaseModel):
     top_policy_reasons: list[ReasonCount]
     review_disposition_mix: list[ReasonCount]
     latency: LatencySnapshot
+    sop_evidence: list[SopEvidenceSnapshot] = Field(default_factory=list)
+
+
+def _attach_sop_evidence(
+    reasons: list[ReasonCount],
+    docs_dir: Path | None,
+) -> list[SopEvidenceSnapshot]:
+    """Attach only SOP sections explicitly approved by policy routing."""
+    if docs_dir is None:
+        return []
+    chunks = {
+        (chunk.document_id, chunk.section): chunk
+        for chunk in load_procedure_chunks(docs_dir)
+    }
+    evidence: dict[tuple[str, str], SopEvidenceSnapshot] = {}
+    for reason in reasons:
+        for route in POLICY_SECTION_ROUTES.get(reason.reason_code, ()):
+            chunk = chunks.get((route.document_id, route.parent_section))
+            if chunk is None:
+                continue
+            key = (route.document_id, route.parent_section)
+            if key not in evidence:
+                evidence[key] = SopEvidenceSnapshot(
+                    document_id=chunk.document_id,
+                    title=chunk.title,
+                    section=chunk.section,
+                    excerpt=" ".join(chunk.text.split())[:500],
+                    source_reason_codes=[],
+                    related_event_count=0,
+                )
+            item = evidence[key]
+            item.source_reason_codes.append(reason.reason_code)
+            item.related_event_count += reason.count
+    return list(evidence.values())
 
 
 def build_operations_briefing_snapshot(
@@ -81,6 +127,7 @@ def build_operations_briefing_snapshot(
     period: BriefingPeriod,
     *,
     generated_at: datetime | None = None,
+    docs_dir: Path | None = None,
 ) -> OperationsBriefingSnapshot:
     """Build a typed, LLM-free snapshot from repository dashboard aggregates."""
     window = dashboard_summary.get("windows", {}).get(period)
@@ -134,5 +181,9 @@ def build_operations_briefing_snapshot(
                 "retrieval": latency.get("retrieval", {}),
                 "explanation": latency.get("explanation", {}),
             }
+        ),
+        sop_evidence=_attach_sop_evidence(
+            [ReasonCount.model_validate(item) for item in window.get("top_policy_reasons", [])],
+            docs_dir,
         ),
     )

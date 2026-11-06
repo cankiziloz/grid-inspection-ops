@@ -50,7 +50,10 @@ reason codes; and latency p50/p95 measurements.
 The optional Operations Briefing is built in stages. Its first stage is a
 deterministic, typed snapshot—not an LLM response. It packages the selected
 dashboard period's activity, review outcomes, queue, policy reasons, review
-dispositions, and latency metrics for a later constrained generator.
+dispositions, latency metrics, and deterministic SOP evidence for a later
+constrained generator. Each evidence item is an approved SOP section selected
+by the policy-reason routing table, with its source reason code and related
+event count; it is not an unrestricted document search.
 
 ```bash
 curl "http://127.0.0.1:8000/v1/operations/briefing-snapshot?period=24h"

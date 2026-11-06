@@ -63,6 +63,36 @@ def test_briefing_snapshot_rejects_unknown_period():
         build_operations_briefing_snapshot(dashboard_summary(), "1h")  # type: ignore[arg-type]
 
 
+def test_briefing_snapshot_attaches_only_policy_approved_sop_sections(tmp_path):
+    (tmp_path / "review.md").write_text(
+        "# Human Review Procedure\n\n"
+        "**Document ID:** SOP-REV-02\n\n"
+        "## Required review steps\n\n"
+        "Confirm image quality, review the evidence, and record a final disposition.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "ingestion.md").write_text(
+        "# Image Ingestion Procedure\n\n"
+        "**Document ID:** SOP-ING-01\n\n"
+        "## Image acceptance rules\n\n"
+        "Reject or route frames that fail the capture acceptance checks.\n",
+        encoding="utf-8",
+    )
+
+    snapshot = build_operations_briefing_snapshot(
+        dashboard_summary(),
+        "24h",
+        docs_dir=tmp_path,
+    )
+
+    assert {(item.document_id, item.section) for item in snapshot.sop_evidence} == {
+        ("SOP-REV-02", "Required review steps"),
+        ("SOP-ING-01", "Image acceptance rules"),
+    }
+    assert all(item.source_reason_codes == ["LOW_VALID_COVERAGE"] for item in snapshot.sop_evidence)
+    assert all(item.related_event_count == 4 for item in snapshot.sop_evidence)
+
+
 def test_briefing_snapshot_endpoint_uses_deterministic_repository_data(monkeypatch):
     class Repository:
         def dashboard_summary(self) -> dict:
@@ -77,3 +107,4 @@ def test_briefing_snapshot_endpoint_uses_deterministic_repository_data(monkeypat
     assert payload["source"] == "deterministic-dashboard"
     assert payload["incoming_activity"]["total"] == 12
     assert payload["latency"]["end_to_end"]["p95_ms"] == 300.0
+    assert payload["sop_evidence"]
