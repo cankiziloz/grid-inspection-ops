@@ -72,7 +72,7 @@
   const capture=record=>record.metadata?.capture||{};
   const metric=(label,value,detail)=>`<article class="card"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div><div class="trend">${esc(detail)}</div></article>`;
   const percent=value=>`${(Number(value||0)*100).toFixed(1)}%`;
-  const reviewReasonLabels={TRUE_DEFECT_CONFIRMED:'Confirmed quality defect',NO_DEFECT_FOUND:'No defect found',ACCEPTED_PROCESS_RESIDUE:'Accepted process residue',ACCEPTABLE_VARIATION:'Acceptable variation',CAPTURE_ARTIFACT:'Capture artifact',POLICY_EXCEPTION:'Policy exception',LEGACY_UNCLASSIFIED:'Legacy unclassified'};
+  const reviewReasonLabels={TRUE_DEFECT_CONFIRMED:'Confirmed quality defect',NO_DEFECT_FOUND:'No defect found',MINOR_DEFECT_ACCEPTED:'Minor defect accepted',ACCEPTED_PROCESS_RESIDUE:'Accepted process residue',ACCEPTABLE_VARIATION:'Acceptable variation',CAPTURE_ARTIFACT:'Capture artifact',POLICY_EXCEPTION:'Policy exception',LEGACY_UNCLASSIFIED:'Legacy unclassified'};
   const policyReasonNotes={
     LOW_VALID_COVERAGE:'Valid coverage is below the 98.0% safety gate. Rotation/cropping left too much of the normalized frame outside valid image content, so human review is required.',
     SCORE_IN_REVIEW_BAND:'The anomaly score is above the review threshold but below the reject threshold, so the policy routed the part to human review.',
@@ -103,7 +103,7 @@
     const actions=(explanation?.operator_actions||[]).map(action=>action.replace('Review the anomaly-mask overlay and each highlighted region.','Review the original capture and recorded policy reasons.'));
     const explain=explanation?`<section class="explain"><h3>Recommended actions</h3>${actions.length?`<ul>${actions.map(action=>`<li>${esc(action)}</li>`).join('')}</ul>`:''}${refs?`<div class="refs">${refs}</div>`:''}</section>`:'';
     const policyNotes=(policy.reason_codes||[]).map(code=>policyReasonNotes[code]).filter(Boolean);
-    const review=`<section class="review"><b>Human disposition required</b><label>Reviewer ID<input id="reviewer" placeholder="operator ID"></label><label>Disposition type<select id="reason-code"><option value="NO_DEFECT_FOUND">No defect found — PASS</option><option value="ACCEPTED_PROCESS_RESIDUE">Accepted process residue — PASS</option><option value="ACCEPTABLE_VARIATION">Acceptable variation — PASS</option><option value="CAPTURE_ARTIFACT">Capture artifact — PASS</option><option value="POLICY_EXCEPTION">Policy exception — PASS</option><option value="TRUE_DEFECT_CONFIRMED">Confirmed quality defect — REJECT</option></select></label><label>Reason<textarea id="reason" rows="3" placeholder="Evidence-based final disposition"></textarea></label><div class="actions"><button onclick="resolveReview()">Save disposition</button></div></section>`;
+    const review=`<section class="review"><b>Human disposition required</b><label>Reviewer ID<input id="reviewer" placeholder="operator ID"></label><label>Disposition type<select id="reason-code"><option value="NO_DEFECT_FOUND">No defect found — PASS</option><option value="MINOR_DEFECT_ACCEPTED">Minor defect accepted — PASS</option><option value="ACCEPTED_PROCESS_RESIDUE">Accepted process residue — PASS</option><option value="ACCEPTABLE_VARIATION">Acceptable variation — PASS</option><option value="CAPTURE_ARTIFACT">Capture artifact — PASS</option><option value="POLICY_EXCEPTION">Policy exception — PASS</option><option value="TRUE_DEFECT_CONFIRMED">Confirmed quality defect — REJECT</option></select></label><label>Reason<textarea id="reason" rows="3" placeholder="Evidence-based final disposition"></textarea></label><div class="actions"><button onclick="resolveReview()">Save disposition</button></div></section>`;
     $('#detail').className='';
     $('#detail').innerHTML=`<div class="detail"><div>${image}</div><div class="details">${badge(record.decision)}<div class="score">${score(evidence.score)}</div><div class="kv"><b>Station:</b> ${esc(c.station_id||'manual')}<br><b>Camera:</b> ${esc(c.camera_id||'manual')}<br><b>Frame:</b> ${esc(c.frame_id||'not supplied')}<br><b>Model:</b> ${esc(evidence.model_version||'not recorded')}<br><b>Score:</b> ${score(evidence.score)}<br><b>Review threshold:</b> ${score(evidence.review_threshold)}<br><b>Reject threshold:</b> ${score(evidence.reject_threshold)}<br><b>Valid coverage:</b> ${percent(evidence.valid_coverage)}</div><div class="code">${(policy.reason_codes||[]).map(esc).join(' · ')||'No policy reasons recorded'}</div>${policyNotes.length?`<div class="tiny">${policyNotes.map(esc).join(' ')}</div>`:''}${explain}${review}</div></div>`;
   }
@@ -127,9 +127,10 @@
     ].join('');
     $('#review-metrics').innerHTML=[
       metric('Resolved',outcomes.resolved??0,'Human-reviewed in this period'),
-      metric('Operator clears',outcomes.operator_pass??0,'INSPECT → PASS'),
-      metric('Operator confirms',outcomes.operator_reject??0,'INSPECT → REJECT'),
-      metric('Confirmed defect rate',percent(outcomes.confirmed_defect_rate),'Resolved INSPECT cases in this period'),
+      metric('No defect found',outcomes.no_defect_found??0,`Strict false-positive rate ${percent(outcomes.strict_false_positive_rate)}`),
+      metric('Minor defect released',outcomes.accepted_minor_defect??0,'Defect present, quality PASS'),
+      metric('Confirmed quality defect',outcomes.operator_reject??0,`Reject confirmation ${percent(outcomes.confirmed_defect_rate)}`),
+      metric('Defect observed rate',percent(outcomes.defect_observed_rate),'Confirmed or minor accepted defect'),
     ].join('');
     const reasons=window.top_policy_reasons||[];
     $('#reasons').innerHTML=reasons.length?reasons.map(reason=>`<div class="reason"><span>${esc(reason.reason_code)}</span><b>${reason.count}</b></div>`).join(''):'<div class="empty">No operational data yet.</div>';

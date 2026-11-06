@@ -5,7 +5,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .domain import Decision, InspectionRecord, ReviewResolution, ReviewStatus
+from .domain import Decision, InspectionRecord, ReviewReasonCode, ReviewResolution, ReviewStatus
 
 
 class SqliteInspectionRepository:
@@ -200,6 +200,8 @@ class SqliteInspectionRepository:
                 ]
                 review_outcomes = {Decision.PASS.value: 0, Decision.REJECT.value: 0}
                 review_reasons: Counter[str] = Counter()
+                no_defect_found = 0
+                accepted_minor_defect = 0
                 for record in reviewed_records:
                     if record.final_decision:
                         review_outcomes[record.final_decision.value] += 1
@@ -209,6 +211,10 @@ class SqliteInspectionRepository:
                         else "LEGACY_UNCLASSIFIED"
                     )
                     review_reasons[code] += 1
+                    if code == ReviewReasonCode.NO_DEFECT_FOUND.value:
+                        no_defect_found += 1
+                    if code == ReviewReasonCode.MINOR_DEFECT_ACCEPTED.value:
+                        accepted_minor_defect += 1
                 resolved = sum(review_outcomes.values())
                 result["windows"][name] = {
                     "total": total,
@@ -228,6 +234,12 @@ class SqliteInspectionRepository:
                         "operator_pass": review_outcomes[Decision.PASS.value],
                         "operator_reject": review_outcomes[Decision.REJECT.value],
                         "confirmed_defect_rate": review_outcomes[Decision.REJECT.value] / resolved if resolved else 0.0,
+                        "no_defect_found": no_defect_found,
+                        "strict_false_positive_rate": no_defect_found / resolved if resolved else 0.0,
+                        "accepted_minor_defect": accepted_minor_defect,
+                        "defect_observed_rate": (
+                            review_outcomes[Decision.REJECT.value] + accepted_minor_defect
+                        ) / resolved if resolved else 0.0,
                     },
                     "review_reason_counts": [
                         {"reason_code": reason, "count": count}

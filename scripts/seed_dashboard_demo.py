@@ -28,6 +28,7 @@ SEED_CASES = [
     ("003", 2.4, Decision.INSPECT, Decision.PASS, ReviewReasonCode.ACCEPTED_PROCESS_RESIDUE, "SCORE_IN_REVIEW_BAND"),
     ("004", 4.8, Decision.INSPECT, Decision.REJECT, ReviewReasonCode.TRUE_DEFECT_CONFIRMED, "SCORE_IN_REVIEW_BAND"),
     ("005", 8.0, Decision.INSPECT, Decision.PASS, ReviewReasonCode.CAPTURE_ARTIFACT, "LOW_VALID_COVERAGE"),
+    ("015", 12.0, Decision.INSPECT, Decision.PASS, ReviewReasonCode.MINOR_DEFECT_ACCEPTED, "SCORE_IN_REVIEW_BAND"),
     ("006", 18.0, Decision.PASS, None, None, "ALL_CRITICAL_GATES_PASSED"),
     ("007", 30.0, Decision.INSPECT, Decision.PASS, ReviewReasonCode.NO_DEFECT_FOUND, "SCORE_IN_REVIEW_BAND"),
     ("008", 55.0, Decision.REJECT, None, None, "SCORE_AT_OR_ABOVE_REJECT_THRESHOLD"),

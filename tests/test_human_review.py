@@ -82,6 +82,10 @@ def test_dashboard_reports_review_outcomes_without_calling_them_accuracy(tmp_pat
         "operator_pass": 1,
         "operator_reject": 1,
         "confirmed_defect_rate": 0.5,
+        "no_defect_found": 0,
+        "strict_false_positive_rate": 0.0,
+        "accepted_minor_defect": 0,
+        "defect_observed_rate": 0.5,
     }
     assert {
         item["reason_code"]: item["count"] for item in period_summary["review_reason_counts"]
@@ -130,3 +134,32 @@ def test_dashboard_review_outcomes_use_review_time_not_inspection_time(tmp_path)
     assert summary["windows"]["7d"]["review_outcomes"]["resolved"] == 1
     assert summary["windows"]["30d"]["review_outcomes"]["resolved"] == 2
     assert summary["windows"]["all"]["review_outcomes"]["resolved"] == 2
+
+
+def test_dashboard_separates_no_defect_from_minor_defect_accepted(tmp_path):
+    repository = SqliteInspectionRepository(str(tmp_path / "inspections.db"))
+    for inspection_id in ("no-defect", "minor-defect"):
+        repository.save(
+            InspectionRecord(
+                inspection_id=inspection_id,
+                part_id=inspection_id,
+                image_uri="image.png",
+                decision=Decision.INSPECT,
+                review_status=ReviewStatus.PENDING,
+            )
+        )
+    repository.resolve_review(
+        "no-defect",
+        review(Decision.PASS, ReviewReasonCode.NO_DEFECT_FOUND),
+    )
+    repository.resolve_review(
+        "minor-defect",
+        review(Decision.PASS, ReviewReasonCode.MINOR_DEFECT_ACCEPTED),
+    )
+
+    outcomes = repository.dashboard_summary()["windows"]["24h"]["review_outcomes"]
+
+    assert outcomes["no_defect_found"] == 1
+    assert outcomes["accepted_minor_defect"] == 1
+    assert outcomes["strict_false_positive_rate"] == 0.5
+    assert outcomes["defect_observed_rate"] == 0.5
