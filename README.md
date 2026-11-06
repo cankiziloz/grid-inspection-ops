@@ -73,6 +73,10 @@ default is a deterministic template:
 curl "http://127.0.0.1:8000/v1/operations/briefing?period=24h"
 ```
 
+In the Operations Dashboard, select a period and use **Generate briefing**.
+The dashboard does not regenerate it during its regular data refresh, avoiding
+an unnecessary local-model call every ten seconds.
+
 To enable a local Ollama narrator, configure it separately from the
 per-inspection explainer:
 
