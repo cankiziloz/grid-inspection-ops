@@ -88,7 +88,7 @@
   };
   const reviewReasonLabels={TRUE_DEFECT_CONFIRMED:'Confirmed quality defect',NO_DEFECT_FOUND:'No defect found',MINOR_DEFECT_ACCEPTED:'Minor defect accepted',ACCEPTED_PROCESS_RESIDUE:'Accepted process residue',ACCEPTABLE_VARIATION:'Acceptable variation',CAPTURE_ARTIFACT:'Capture artifact',POLICY_EXCEPTION:'Policy exception',LEGACY_UNCLASSIFIED:'Legacy unclassified'};
   const policyReasonNotes={
-    LOW_VALID_COVERAGE:'Valid coverage is below the 98.0% safety gate. Rotation/cropping left too much of the normalized frame outside valid image content, so human review is required.',
+    LOW_VALID_COVERAGE:'Valid coverage is below the 98.0% safety gate. Human verification is required before an automatic disposition.',
     SCORE_IN_REVIEW_BAND:'The anomaly score is above the review threshold but below the reject threshold, so the policy routed the part to human review.',
     SCORE_AT_OR_ABOVE_REJECT_THRESHOLD:'The anomaly score reached the calibrated reject threshold.',
     ARTIFACT_NOT_VERIFIED:'The model artifact could not be verified, so the policy failed closed to human review.',
@@ -118,7 +118,7 @@
     const explain=explanation?`<section class="explain"><h3>Recommended actions</h3>${actions.length?`<ul>${actions.map(action=>`<li>${esc(action)}</li>`).join('')}</ul>`:''}${refs?`<div class="refs">${refs}</div>`:''}</section>`:'';
     const policyNotes=(policy.reason_codes||[]).map(code=>policyReasonNotes[code]).filter(Boolean);
     const scoreSafetyNote=record.decision==='INSPECT'&&evidence.score>=evidence.reject_threshold
-      ? 'The anomaly score is above the reject threshold, but automatic rejection is blocked because a safety gate also requires human review.'
+      ? 'The anomaly score is above the reject threshold. Automatic rejection is withheld until human verification because the coverage safety requirement was not met.'
       : '';
     const review=`<section class="review"><b>Human disposition required</b><label>Reviewer ID<input id="reviewer" placeholder="operator ID"></label><label>Disposition type<select id="reason-code"><option value="NO_DEFECT_FOUND">No defect found — PASS</option><option value="MINOR_DEFECT_ACCEPTED">Minor defect accepted — PASS</option><option value="ACCEPTED_PROCESS_RESIDUE">Accepted process residue — PASS</option><option value="ACCEPTABLE_VARIATION">Acceptable variation — PASS</option><option value="CAPTURE_ARTIFACT">Capture artifact — PASS</option><option value="POLICY_EXCEPTION">Policy exception — PASS</option><option value="TRUE_DEFECT_CONFIRMED">Confirmed quality defect — REJECT</option></select></label><label>Reason<textarea id="reason" rows="3" placeholder="Evidence-based final disposition"></textarea></label><div class="actions"><button onclick="resolveReview()">Save disposition</button></div></section>`;
     $('#detail').className='';
