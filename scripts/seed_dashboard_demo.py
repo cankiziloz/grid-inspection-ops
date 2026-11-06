@@ -50,10 +50,29 @@ def main() -> None:
     database = Path(args.database)
     now = datetime.now(timezone.utc)
     inserted = 0
+    enriched = 0
 
     for suffix, age_hours, decision, final, reason_code, policy_reason in SEED_CASES:
         inspection_id = f"demo-dashboard-{suffix}"
-        if repository.get(inspection_id):
+        index = int(suffix)
+        latency_ms = {
+            "vision": float(80 + index * 3),
+            "retrieval": float(15 + index),
+            "explanation": float(35 + index * 2),
+            "end_to_end": float(150 + index * 6),
+        }
+        existing = repository.get(inspection_id)
+        if existing:
+            if "latency_ms" not in existing.metadata:
+                updated = existing.model_copy(
+                    update={"metadata": {**existing.metadata, "latency_ms": latency_ms}}
+                )
+                with sqlite3.connect(database) as connection:
+                    connection.execute(
+                        "UPDATE inspections SET record_json = ? WHERE inspection_id = ?",
+                        (updated.model_dump_json(), inspection_id),
+                    )
+                enriched += 1
             continue
         created_at = now - timedelta(hours=age_hours)
         review = None
@@ -75,7 +94,10 @@ def main() -> None:
             final_decision=final,
             review_status=review_status,
             review=review,
-            metadata={"critical_policy": {"reason_codes": [policy_reason]}},
+            metadata={
+                "critical_policy": {"reason_codes": [policy_reason]},
+                "latency_ms": latency_ms,
+            },
         )
         repository.save(record)
         with sqlite3.connect(database) as connection:
@@ -84,7 +106,9 @@ def main() -> None:
                 (created_at.strftime("%Y-%m-%d %H:%M:%S"), inspection_id),
             )
         inserted += 1
-    print(f"Inserted {inserted} dashboard demo records into {database}.")
+    print(
+        f"Inserted {inserted} and enriched {enriched} dashboard demo records into {database}."
+    )
 
 
 if __name__ == "__main__":

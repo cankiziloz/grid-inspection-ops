@@ -164,3 +164,31 @@ def test_dashboard_separates_no_defect_from_minor_defect_accepted(tmp_path):
     assert outcomes["accepted_minor_defect"] == 1
     assert outcomes["no_defect_found_rate"] == 0.5
     assert outcomes["accepted_minor_defect_rate"] == 0.5
+
+
+def test_dashboard_reports_p50_and_p95_latency_for_instrumented_inspections(tmp_path):
+    repository = SqliteInspectionRepository(str(tmp_path / "inspections.db"))
+    for index, end_to_end in enumerate((10.0, 100.0, 200.0), start=1):
+        repository.save(
+            InspectionRecord(
+                inspection_id=f"latency-{index}",
+                part_id=f"latency-{index}",
+                image_uri="image.png",
+                decision=Decision.PASS,
+                final_decision=Decision.PASS,
+                metadata={
+                    "latency_ms": {
+                        "end_to_end": end_to_end,
+                        "vision": end_to_end / 2,
+                        "retrieval": 5.0,
+                        "explanation": 8.0,
+                    }
+                },
+            )
+        )
+
+    latency = repository.dashboard_summary()["windows"]["24h"]["latency_ms"]
+
+    assert latency["samples"] == 3
+    assert latency["end_to_end"] == {"p50_ms": 100.0, "p95_ms": 200.0}
+    assert latency["vision"] == {"p50_ms": 50.0, "p95_ms": 100.0}

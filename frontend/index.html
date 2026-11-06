@@ -49,12 +49,12 @@
   </section>
 
   <section class="view" id="dashboard-view" hidden>
-    <section class="metrics" id="decision-metrics"></section>
-    <section class="panel" style="margin-top:18px"><div class="head"><h2>Production dispositions</h2><small>Final PASS/REJECT outcomes in the selected period</small></div><div class="metrics" id="final-metrics"></div></section>
-    <div class="grid dashboard-grid" style="margin-top:18px">
+    <div class="grid dashboard-grid">
       <section class="panel"><div class="head"><h2>Review outcomes</h2><small>Only initially INSPECT cases</small></div><div class="metrics" id="review-metrics"></div><div class="note">Every percentage uses the same denominator: resolved INSPECT cases in the selected period. “No defect found” is the strict false-positive signal for the model.</div><div class="head" style="margin-top:16px"><h3>Review disposition mix</h3><small>Why an operator decided</small></div><div class="list" id="review-reasons"><div class="empty">No resolved reviews yet.</div></div></section>
-      <section class="panel"><div class="head"><h2>Top policy reasons</h2><small>Last 24 hours</small></div><div class="list" id="reasons"><div class="empty">No operational data yet.</div></div></section>
+      <section class="panel"><div class="head"><h2>Top policy reasons</h2><small>Selected time period</small></div><div class="list" id="reasons"><div class="empty">No operational data yet.</div></div></section>
     </div>
+    <section class="panel" style="margin-top:18px"><div class="head"><h2>Inspection latency</h2><small>p50 / p95 from persisted measurements</small></div><div class="metrics" id="latency-metrics"></div><p class="tiny">Only inspections created after latency instrumentation are included.</p></section>
+    <section style="margin-top:18px"><div class="head"><h2>Incoming inspection activity</h2><small>Selected time period</small></div><div class="metrics" id="decision-metrics"></div></section>
     <div class="grid dashboard-grid" style="margin-top:18px">
       <section class="panel"><div class="head"><h2>Recent production decisions</h2><small>PASS, REJECT, and resolved reviews</small></div><div class="list" id="recent-decisions"><div class="empty">No completed decisions yet.</div></div></section>
       <section class="panel"><div class="head"><h2>How to read this</h2><small>Operational signals</small></div><div class="list"><div class="reason"><span>Attention rate</span><span>INSPECT + REJECT spike can indicate process shift</span></div><div class="reason"><span>Reject rate</span><span>Monitor by station/camera as volume grows</span></div><div class="reason"><span>Oldest review</span><span>Queue latency; unresolved parts must not disappear</span></div><div class="reason"><span>Review outcomes</span><span>Measure whether the uncertainty band is too wide or too narrow</span></div></div></section>
@@ -72,6 +72,11 @@
   const capture=record=>record.metadata?.capture||{};
   const metric=(label,value,detail)=>`<article class="card"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div><div class="trend">${esc(detail)}</div></article>`;
   const percent=value=>`${(Number(value||0)*100).toFixed(1)}%`;
+  const latencyMetric=(label,summary={})=>metric(
+    label,
+    summary.p50_ms===null||summary.p50_ms===undefined?'—':`${Math.round(summary.p50_ms)} ms`,
+    summary.p95_ms===null||summary.p95_ms===undefined?'No samples yet':`p95 ${Math.round(summary.p95_ms)} ms`,
+  );
   const reviewReasonLabels={TRUE_DEFECT_CONFIRMED:'Confirmed quality defect',NO_DEFECT_FOUND:'No defect found',MINOR_DEFECT_ACCEPTED:'Minor defect accepted',ACCEPTED_PROCESS_RESIDUE:'Accepted process residue',ACCEPTABLE_VARIATION:'Acceptable variation',CAPTURE_ARTIFACT:'Capture artifact',POLICY_EXCEPTION:'Policy exception',LEGACY_UNCLASSIFIED:'Legacy unclassified'};
   const policyReasonNotes={
     LOW_VALID_COVERAGE:'Valid coverage is below the 98.0% safety gate. Rotation/cropping left too much of the normalized frame outside valid image content, so human review is required.',
@@ -113,7 +118,7 @@
 
   function renderDashboard() {
     if(!dashboard) return;
-    const window=dashboard.windows?.[period]||{}, counts=window.decision_counts||{}, outcomes=window.review_outcomes||{}, finalDisposition=window.final_disposition||{};
+    const window=dashboard.windows?.[period]||{}, counts=window.decision_counts||{}, outcomes=window.review_outcomes||{}, latency=window.latency_ms||{};
     $('#decision-metrics').innerHTML=[
       metric('Inspections',window.total??0,{ '24h':'Last 24 hours', '7d':'Last 7 days', '30d':'Last 30 days', all:'All time' }[period]),
       metric('Auto pass',counts.PASS??0,'Released without review'),
@@ -122,11 +127,11 @@
       metric('Open reviews',dashboard.review_queue_depth??0,dashboard.oldest_pending_review_minutes===null?'Queue clear':`Oldest ${dashboard.oldest_pending_review_minutes} min`),
       metric('Review holds',counts.INSPECT??0,'Initially sent to human review'),
     ].join('');
-    $('#final-metrics').innerHTML=[
-      metric('Completed decisions',finalDisposition.completed??0,'Final dispositions in this period'),
-      metric('Released',finalDisposition.pass??0,`PASS rate ${percent(finalDisposition.pass_rate)}`),
-      metric('Quarantined',finalDisposition.reject??0,`REJECT rate ${percent(finalDisposition.reject_rate)}`),
-      metric('Still pending',finalDisposition.pending??0,'Awaiting human disposition'),
+    $('#latency-metrics').innerHTML=[
+      latencyMetric('End-to-end',latency.end_to_end),
+      latencyMetric('Vision inference',latency.vision),
+      latencyMetric('Procedure retrieval',latency.retrieval),
+      latencyMetric('Explanation',latency.explanation),
     ].join('');
     $('#review-metrics').innerHTML=[
       metric('Resolved',outcomes.resolved??0,'Human-reviewed in this period'),

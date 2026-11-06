@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import perf_counter
 from typing import Protocol, TypedDict
 from uuid import uuid4
 
@@ -22,6 +23,8 @@ class InspectionState(TypedDict, total=False):
     capture: dict
     record: InspectionRecord
     history: dict
+    started_at: float
+    timings_ms: dict[str, float]
 
 
 def build_inspection_graph(
@@ -34,9 +37,14 @@ def build_inspection_graph(
         path = Path(state["image_path"])
         if not path.is_file():
             raise FileNotFoundError(path)
-        return {"inspection_id": state.get("inspection_id", str(uuid4()))}
+        return {
+            "inspection_id": state.get("inspection_id", str(uuid4())),
+            "started_at": perf_counter(),
+            "timings_ms": {},
+        }
 
     def run_grid_model(state: InspectionState) -> InspectionState:
+        started = perf_counter()
         evidence = vision.inspect(Path(state["image_path"]))
         outcome = evaluate(evidence)
         record = InspectionRecord(
@@ -56,26 +64,57 @@ def build_inspection_graph(
                 **({"capture": state["capture"]} if state.get("capture") else {}),
             },
         )
-        return {"record": record}
+        return {
+            "record": record,
+            "timings_ms": {
+                **state["timings_ms"],
+                "vision": round((perf_counter() - started) * 1000, 2),
+            },
+        }
 
     def load_history(state: InspectionState) -> InspectionState:
         return {"history": repository.recent_summary()}
 
     def add_explanation(state: InspectionState) -> InspectionState:
+        started = perf_counter()
         record = state["record"]
         # The explanation is post-decision only; it cannot mutate record.decision.
         payload = explainer.explain(record, state["history"])
-        return {"record": record.model_copy(update={"explanation": payload.summary, "explanation_payload": payload})}
+        return {
+            "record": record.model_copy(
+                update={"explanation": payload.summary, "explanation_payload": payload}
+            ),
+            "timings_ms": {
+                **state["timings_ms"],
+                "explanation": round((perf_counter() - started) * 1000, 2),
+            },
+        }
 
     def retrieve_procedures(state: InspectionState) -> InspectionState:
         if retriever is None:
-            return {}
+            return {"timings_ms": {**state["timings_ms"], "retrieval": 0.0}}
+        started = perf_counter()
         record = state["record"]
-        return {"record": record.model_copy(update={"procedure_references": retriever.retrieve(record)})}
+        return {
+            "record": record.model_copy(
+                update={"procedure_references": retriever.retrieve(record)}
+            ),
+            "timings_ms": {
+                **state["timings_ms"],
+                "retrieval": round((perf_counter() - started) * 1000, 2),
+            },
+        }
 
     def persist(state: InspectionState) -> InspectionState:
-        repository.save(state["record"])
-        return {}
+        timings = {
+            **state["timings_ms"],
+            "end_to_end": round((perf_counter() - state["started_at"]) * 1000, 2),
+        }
+        record = state["record"].model_copy(
+            update={"metadata": {**state["record"].metadata, "latency_ms": timings}}
+        )
+        repository.save(record)
+        return {"record": record}
 
     graph = StateGraph(InspectionState)
     graph.add_node("validate_input", validate_input)

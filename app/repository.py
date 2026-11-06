@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from math import ceil
 from pathlib import Path
 
 from .domain import Decision, InspectionRecord, ReviewReasonCode, ReviewResolution, ReviewStatus
@@ -141,6 +142,31 @@ class SqliteInspectionRepository:
             reviewed_at = reviewed_at.replace(tzinfo=timezone.utc)
         return reviewed_at.astimezone(timezone.utc)
 
+    @staticmethod
+    def _latency_summary(records: list[InspectionRecord]) -> dict:
+        phases = ("end_to_end", "vision", "retrieval", "explanation")
+        values: dict[str, list[float]] = {phase: [] for phase in phases}
+        for record in records:
+            timing = record.metadata.get("latency_ms", {})
+            for phase in phases:
+                value = timing.get(phase)
+                if isinstance(value, (int, float)) and value >= 0:
+                    values[phase].append(float(value))
+
+        def percentile(samples: list[float], percentile_value: float) -> float | None:
+            if not samples:
+                return None
+            ordered = sorted(samples)
+            return round(ordered[ceil(len(ordered) * percentile_value) - 1], 2)
+
+        return {
+            "samples": len(values["end_to_end"]),
+            **{
+                phase: {"p50_ms": percentile(samples, 0.50), "p95_ms": percentile(samples, 0.95)}
+                for phase, samples in values.items()
+            },
+        }
+
     def dashboard_summary(self) -> dict:
         """UTC-windowed counters for the live operations dashboard."""
         windows = {
@@ -179,8 +205,10 @@ class SqliteInspectionRepository:
                     f"SELECT record_json FROM inspections {where}",
                     parameters,
                 ).fetchall()
-                for row in record_rows:
-                    record = InspectionRecord.model_validate_json(row["record_json"])
+                window_records = [
+                    InspectionRecord.model_validate_json(row["record_json"]) for row in record_rows
+                ]
+                for record in window_records:
                     policy_reasons.update(
                         record.metadata.get("critical_policy", {}).get("reason_codes", [])
                     )
@@ -248,6 +276,7 @@ class SqliteInspectionRepository:
                         {"reason_code": reason, "count": count}
                         for reason, count in policy_reasons.most_common(5)
                     ],
+                    "latency_ms": self._latency_summary(window_records),
                 }
             result["review_queue_depth"] = connection.execute(
                 "SELECT COUNT(*) AS count FROM inspections WHERE review_status = 'PENDING'"
